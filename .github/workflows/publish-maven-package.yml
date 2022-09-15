@@ -1,0 +1,68 @@
+name: Updated repository in packages branch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          #server-id: github # Value of the distributionManagement/repository/id field of the pom.xml
+          #settings-path: ${{ github.workspace }} # location for the settings.xml file
+
+      - name: Compile Groovy code and generate sources
+        run: |
+          mvn -f pom-2.5.xml gplus:compile generate-sources package
+          mvn -f pom-3.0.xml gplus:compile generate-sources package
+
+
+      #Manually first (once) set up an orphaned branch:
+      # git switch --orphan packages
+      # git commit --allow-empty -m "Initial commit on packages branch"
+      # git push origin packages:packages
+
+      - name: Install Package to packages branch
+        run: |
+          mkdir localm2
+          mkdir -p repository/com/eficode/atlassian/bitbucketinstancemanager
+          
+          mvn install -f pom-2.5.xml -Dmaven.repo.local=localm2/
+          mvn install -f pom-3.0.xml -Dmaven.repo.local=localm2/
+          rsync -avh localm2/com/eficode/atlassian/bitbucketinstancemanager/ repository/com/eficode/atlassian/bitbucketinstancemanager/
+          
+          
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          echo Adding repository dir temporarily so stash picks it up
+          git add repository
+          echo Stashing current changes
+          git stash
+          echo Running git fetch
+          git fetch
+          echo Checking out Packages repo
+          git checkout packages
+          echo Applying stash, overwriting any checked out changes
+          git checkout stash -- .
+          echo Running git reset, to ignore any automatically added tracked changes
+          git reset
+          echo Adding repository files to git
+          git add repository/*
+          echo Committing changes
+          git commit -m "Updated packages to $VERSION"
+          echo Pushing changes
+          git push
+
