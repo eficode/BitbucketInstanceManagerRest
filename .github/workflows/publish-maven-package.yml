@@ -25,7 +25,9 @@ jobs:
           #settings-path: ${{ github.workspace }} # location for the settings.xml file
 
       - name: Compile Groovy code and generate sources
-        run: mvn gplus:compile generate-sources package
+        run: |
+          mvn -f pom-2.5.xml gplus:compile generate-sources package
+          mvn -f pom-3.0.xml gplus:compile generate-sources package
 
 
       #Manually first (once) set up an orphaned branch:
@@ -35,15 +37,13 @@ jobs:
 
       - name: Install Package to packages branch
         run: |
-          MAINJAR=$(ls -1 target/*.jar  | grep -v sources\.jar) 
-          SOURCEJAR=$(ls -1 target/*.jar  | grep sources\.jar | grep -v test) 
-          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-          echo Main JAR: $MAINJAR
-          echo Source JAR: $SOURCEJAR
-          echo Version: $VERSION
-          mkdir -p repository
-          echo Installing JAR in repository directory
-          mvn install:install-file -DpomFile=pom.xml -DlocalRepositoryPath=repository/ -Dfile="$MAINJAR" -Dsources="$SOURCEJAR" -DgeneratePom=true -DcreateChecksum=true
+          mkdir localm2
+          mkdir -p repository/com/eficode/atlassian/bitbucketinstancemanager
+          
+          mvn install -f pom-2.5.xml -Dmaven.repo.local=localm2/
+          mvn install -f pom-3.0.xml -Dmaven.repo.local=localm2/
+          rsync -avh localm2/com/eficode/atlassian/bitbucketinstancemanager/ repository/com/eficode/atlassian/bitbucketinstancemanager/
+          
           
           git config user.name github-actions
           git config user.email github-actions@github.com
