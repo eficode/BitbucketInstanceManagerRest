@@ -40,6 +40,9 @@ jobs:
           mkdir localm2
           mkdir -p repository/com/eficode/atlassian/bitbucketinstancemanager
           
+          echo Installing parent pom file
+          mvn install:install-file -Dpackaing=pom -Dfile=pom.xml -DpomFile=pom.xml -Dmaven.repo.local=localm2/
+          
           echo Compiling, Packaging and Installing Groovy 2.5 version of library to local m2 directory
           mvn install -f pom-2.5.xml -Dmaven.repo.local=localm2/
           
