@@ -6,6 +6,7 @@
 
     <artifactId>bitbucketinstancemanager</artifactId>
     <version>0.0.3-SNAPSHOT-groovy-3.0</version>
+    <packaging>jar</packaging>
     <description>A groovy library for interacting with Bitbucket REST API. NOT FOR PRODUCTION USER</description>
     <parent>
         <groupId>com.eficode.atlassian</groupId>
