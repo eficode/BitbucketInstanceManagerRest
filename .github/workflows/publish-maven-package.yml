@@ -50,7 +50,7 @@ jobs:
           mvn install -f pom-3.0.xml -Dmaven.repo.local=localm2/ -DcreateChecksum=true
           
           echo Copying the new JAR files to repository which will be added to git branch "packages"
-          rsync -avh localm2/com/eficode/atlassian/bitbucketinstancemanager/ repository/com/eficode/atlassian/bitbucketinstancemanager/
+          rsync -avh --checksum localm2/com/eficode/atlassian/bitbucketinstancemanager/ repository/com/eficode/atlassian/bitbucketinstancemanager/
           
           
           git config user.name github-actions
