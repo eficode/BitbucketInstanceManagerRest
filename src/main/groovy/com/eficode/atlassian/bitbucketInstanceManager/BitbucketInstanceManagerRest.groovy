@@ -1,12 +1,28 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
+import com.eficode.atlassian.bitbucketInstanceManager.entities.BitbucketProject
+import com.eficode.atlassian.bitbucketInstanceManager.entities.BitbucketRepo
 import kong.unirest.Cookie
+import kong.unirest.GenericType
+import org.apache.http.auth.UsernamePasswordCredentials
+import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.transport.PushResult
+import org.eclipse.jgit.transport.RemoteConfig
+import org.eclipse.jgit.transport.URIish
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
+import unirest.shaded.com.google.gson.JsonObject
+import unirest.shaded.com.google.gson.reflect.TypeToken
+
+import java.lang.reflect.Type
 import kong.unirest.Cookies
 import kong.unirest.GetRequest
 import kong.unirest.HttpResponse
+import kong.unirest.JsonNode
+import kong.unirest.JsonObjectMapper
 import kong.unirest.Unirest
 import kong.unirest.UnirestException
 import kong.unirest.UnirestInstance
+import kong.unirest.json.JSONArray
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import unirest.shaded.org.apache.http.NoHttpResponseException
@@ -21,6 +37,7 @@ class BitbucketInstanceManagerRest {
     static Cookies cookies
     public String adminUsername = "admin"
     public String adminPassword = "admin"
+    JsonObjectMapper objectMapper = Unirest.config().getObjectMapper() as JsonObjectMapper
 
 
     /**
@@ -45,6 +62,14 @@ class BitbucketInstanceManagerRest {
         adminUsername = username
         adminPassword = password
 
+    }
+
+    UnirestInstance getNewUnirest() {
+
+        UnirestInstance unirest = Unirest.spawnInstance()
+        unirest.config().defaultBaseUrl(baseUrl).setDefaultBasicAuth(adminPassword, adminPassword)
+
+        return unirest
     }
 
     static Cookies extractCookiesFromResponse(HttpResponse response, Cookies existingCookies = null) {
@@ -75,8 +100,8 @@ class BitbucketInstanceManagerRest {
      */
     Cookies getCookiesFromRedirect(String path, String username = adminUsername, String password = adminPassword, Map headers = [:]) {
 
-        UnirestInstance unirestInstance = Unirest.spawnInstance()
-        unirestInstance.config().followRedirects(false).defaultBaseUrl(baseUrl)
+        UnirestInstance unirestInstance = newUnirest
+        unirestInstance.config().followRedirects(false)
 
         Cookies cookies = new Cookies()
         GetRequest getRequest = unirestInstance.get(path).headers(headers)
@@ -129,8 +154,8 @@ class BitbucketInstanceManagerRest {
     boolean setApplicationProperties(String bbLicense, String appTitle = "Bitbucket", String baseUrl = this.baseUrl) {
         log.info("Setting up initial application properties")
 
-        UnirestInstance unirestInstance = Unirest.spawnInstance()
-        unirestInstance.config().defaultBaseUrl(baseUrl).socketTimeout(1000)
+        UnirestInstance unirestInstance = newUnirest
+        unirestInstance.config().socketTimeout(1000)
 
         long startTime = System.currentTimeMillis()
 
@@ -139,12 +164,12 @@ class BitbucketInstanceManagerRest {
                 HttpResponse<String> response = unirestInstance.get("/setup").asString()
 
 
-                if (response.body.contains("<span>Database</span>")) {
+                if (response?.body?.contains("<span>Database</span>")) {
                     log.info("\tBitbucket has started and the Setup dialog has appeared")
                     unirestInstance.shutDown()
                     break
                 } else {
-                    log.info("\tBitbucket has started but the Setup dialog has not appeared yet, waited ${((System.currentTimeMillis() - startTime)/1000).round(0)}s")
+                    log.info("\tBitbucket has started but the Setup dialog has not appeared yet, waited ${((System.currentTimeMillis() - startTime) / 1000).round(0)}s")
                     sleep(5000)
                 }
 
@@ -218,4 +243,303 @@ class BitbucketInstanceManagerRest {
 
         return statusMap?.state
     }
+
+
+    /*
+    def getJsonObjects(String subPath, GenericType type) {
+
+
+        ArrayList rawObjects = getJsonPages(subPath, true)
+
+        return objectMapper.readValue(rawObjects.toString(), type)
+
+
+    }
+
+     */
+
+    ArrayList getJsonPages(String subPath, boolean returnValueOnly = true, int maxPages = 50) {
+
+        UnirestInstance unirest = newUnirest
+
+        int start = 0
+        boolean isLastPage = false
+        int page = 1
+
+        ArrayList responses = []
+
+        while (!isLastPage && start >= 0) {
+
+
+            //Extra loop protection
+            if (page > maxPages) {
+                throw new Exception("Returned more than expected pages (${page}) when querying:" + subPath)
+            }
+            page++
+
+            HttpResponse<JsonNode> response = unirest.get(subPath).accept("application/json").queryString("start", start).asJson()
+
+
+            isLastPage = response?.body?.object?.has("isLastPage") ? response?.body?.object?.get("isLastPage") as boolean : true
+            start = response?.body?.object?.has("nextPageStart") ? response?.body?.object?.get("nextPageStart") as int : -1
+
+            if (returnValueOnly) {
+                if (response.body.object.has("values")) {
+                    responses += response.body.object.get("values") as ArrayList<Map>
+                }else {
+                    throw new InputMismatchException("Unexpected body returned from $subPath, expected JSON with \"values\"-node but got: " + response.body.toString())
+                }
+
+            } else {
+                responses += response.body
+            }
+
+
+        }
+
+        unirest.shutDown()
+        return responses
+
+
+    }
+
+    /** --- Project CRUD --- **/
+
+    ArrayList<BitbucketProject> getProjects() {
+
+
+        ArrayList rawProjects = getJsonPages("/rest/api/latest/projects", true)
+        return BitbucketProject.fromJson(rawProjects.toString())
+
+    }
+
+
+    BitbucketProject getProject(String projectKey) {
+        ArrayList<JsonNode> rawProject = getJsonPages("/rest/api/1.0/projects/" + projectKey, false) as ArrayList<JsonNode>
+
+
+        if (rawProject.toString().contains("Project $projectKey does not exist")) {
+            return null
+        }
+
+        assert rawProject.size() == 1: "Error getting project with key:" + projectKey
+
+        return BitbucketProject.fromJson(rawProject.first().toString()).find { it.valid }
+    }
+
+    boolean deleteProject(BitbucketProject project, boolean deleteRepos = false) {
+
+        return deleteProject(project.key, deleteRepos)
+    }
+
+    /**
+     * Deletes project, will fail if the project has repos and deleteRepos is false
+     * @param projectKey
+     * @param deleteProjectRepos if true, will delete repos if present in project
+     * @return
+     */
+    boolean deleteProject(String projectKey, boolean deleteProjectRepos = false) {
+
+        log.info("Deleting project:" + projectKey)
+        UnirestInstance unirest = newUnirest
+
+        HttpResponse<JsonNode> response = unirest.delete("/rest/api/latest/projects/$projectKey").asJson()
+
+
+        if (response.body.object.has("errors")) {
+            JSONArray errors = response.body.object.errors
+            ArrayList<String> messages = errors.collect { it.message }
+
+            if (deleteProjectRepos && messages.size() == 1 && messages.first().contains("The project \"$projectKey\" cannot be deleted because it has repositories")) {
+                log.info("\tProject has repositories, deleting them now")
+
+                ArrayList<BitbucketRepo> projectRepos = getRepos(projectKey)
+                log.info("\t\tRepos:" + projectRepos.name.join(", "))
+
+                assert deleteRepos(projectRepos): "Error deleting project repos"
+
+                log.info("\tFinished deleting project repositories, deleting project")
+                response = unirest.delete("/rest/api/latest/projects/$projectKey").asJson()
+            } else {
+                throw new Exception("Error deleting project $projectKey:" + messages.join(","))
+            }
+
+
+        }
+        assert response.status == 204: "Deletion of project returned unexpected HTTP status: " + response.status
+        unirest.shutDown()
+
+        log.info("\tFinished deleting project:" + projectKey)
+        return true
+
+    }
+
+    /**
+     * Uses the public REST API available for creating a project, this only allows for setting project key
+     * @param key Key of the new project
+     * @return A BitbucketProject representation of the new project
+     */
+    BitbucketProject createProject(String key) {
+
+        UnirestInstance unirest = newUnirest
+
+        HttpResponse<JsonNode> response = unirest.post("/rest/api/latest/projects").contentType("application/json").body([key: key]).asJson()
+
+        assert response.status == 201: "Creation of project returned unexpected HTTP status: " + response.status
+        assert response.body.object.get("key") == key: "Creation of project returned unexpected JSON: " + response.body
+
+        unirest.shutDown()
+
+
+        return getProject(key)
+
+
+    }
+
+    /**
+     * This creates a project using private APIs as the native APIs doesn't support setting name or description
+     * This should still be safe, but might break after upgrades, for longevity use createProject(String key)
+     * @param name Project name
+     * @param key Project key
+     * @param description An optional description
+     * @return A BitbucketProject representation of the new project
+     */
+    BitbucketProject createProject(String name, String key, String description = "") {
+
+        UnirestInstance unirest = newUnirest
+        unirest.config().followRedirects(false)
+        String createProjectBody = unirest.get("/projects?create").asString().body
+
+
+        String atlToken = searchBodyForAtlToken(createProjectBody)
+        assert atlToken: "Could not find token for form submition"
+
+        HttpResponse response = unirest.post("/projects?create")
+                .field("name", name)
+                .field("key", key)
+                .field("avatar", "")
+                .field("description", description)
+                .field("submit", "Create project")
+                .field("atl_token", atlToken).asEmpty()
+
+        assert response.status == 302: "Creation of project returned unexpected HTTP status: " + response.status
+        assert response.headers.get("Location").first().endsWith("/$key"): "Creation of project returned unexpected redirect:" + response?.headers?.get("Location")
+
+        unirest.shutDown()
+        return getProject(key)
+
+
+    }
+
+    /** --- Repo CRUD --- **/
+
+    BitbucketRepo getRepo(String projectKey, String repoNameOrSlug) {
+        ArrayList<BitbucketRepo> projectRepos = getRepos(projectKey)
+
+        return projectRepos.find {it.name == repoNameOrSlug || it.slug == repoNameOrSlug}
+
+    }
+
+    ArrayList<BitbucketRepo> getRepos(String projectKey) {
+        ArrayList<JsonObject> rawRepos = getJsonPages("/rest/api/1.0/projects/${projectKey}/repos") as ArrayList<JsonNode>
+
+
+        ArrayList<BitbucketRepo> repos = BitbucketRepo.fromJson(rawRepos.toString())
+
+        return repos
+    }
+
+    ArrayList<BitbucketRepo> getRepos(BitbucketProject project) {
+
+        return getRepos(project.key)
+    }
+
+
+    BitbucketRepo createRepo(BitbucketProject project, String repoName) {
+
+        return createRepo(project.key, repoName)
+    }
+
+    BitbucketRepo createRepo(String projectKey, String repoName) {
+
+        log.info("Creating repo $repoName in project: " + projectKey)
+        UnirestInstance unirest = newUnirest
+
+        HttpResponse<JsonNode> response = unirest.post("/rest/api/latest/projects/${projectKey}/repos").contentType("application/json").body(name: repoName).asJson()
+
+
+        assert response.status == 201: "Got unexpected response when creating repo $repoName in project: $projectKey"
+
+        String slug = response.body.object.slug
+        log.info("\tRepo created with slug:" + slug)
+
+        return getRepo(projectKey, response.body.object.slug)
+    }
+
+    boolean deleteRepos(ArrayList<BitbucketRepo> repos) {
+
+        UnirestInstance unirest = newUnirest
+        repos.each { bitbucketRepo ->
+            assert bitbucketRepo.valid: "Error deleting bitbucket repo, was supplied an invalid repo object:" + bitbucketRepo.toString()
+
+            HttpResponse response = unirest.delete("/rest/api/latest/projects/${bitbucketRepo.project.key}/repos/${bitbucketRepo.slug}").asEmpty()
+
+            assert response.status == 202: "Error deleting repo ($bitbucketRepo), request returned unexpected HTTP status"
+        }
+        unirest.shutDown()
+        return true
+    }
+
+    boolean deleteRepo(BitbucketRepo bitbucketRepo) {
+
+        return deleteRepos([bitbucketRepo])
+    }
+
+    /** --- GIT CRUD --- **/
+
+
+
+    //Pushes the current branch
+    void pushToRepo(File localRepoDir, BitbucketRepo remoteRepo) {
+
+        log.info("Pushing local repo to remote repo")
+        log.info("\tLocal repo:..." + localRepoDir.absolutePath.takeRight(50))
+
+        Git localRepo = Git.open(localRepoDir)
+        URIish suppliedRepoUrl = new URIish( remoteRepo.links.get("clone").find {it.name.contains("http")}.href as String)
+
+        log.info("\tRemote repo:" + suppliedRepoUrl.toString())
+
+
+
+        List<RemoteConfig> remoteList = localRepo.remoteList().call()
+
+        RemoteConfig existingRemote = remoteList.find {remote ->
+            remote.getURIs().any {it.path == suppliedRepoUrl.path && it.host == suppliedRepoUrl.host}
+        }
+
+        if (existingRemote) {
+            log.info("\tLocal repo already has the needed git remote:" + existingRemote.toString())
+        }else {
+            log.info("\tLocal repo is missing git remote, adding it now")
+
+            assert localRepo.remoteAdd().setUri(suppliedRepoUrl).setName(remoteRepo.name).call() : "Error adding new remote:" + suppliedRepoUrl.toString()
+            existingRemote = localRepo.remoteList().call().find {it.name == remoteRepo.name}
+
+            assert existingRemote : "Error finding Git Remote after adding it"
+
+            log.info("\t\tFinished adding new git remote")
+        }
+
+
+        ArrayList<PushResult> results = localRepo.push().setRemote(existingRemote.name).setCredentialsProvider(new UsernamePasswordCredentialsProvider(adminUsername, adminPassword)).call()
+
+
+        true
+
+
+
+    }
+
+
 }
