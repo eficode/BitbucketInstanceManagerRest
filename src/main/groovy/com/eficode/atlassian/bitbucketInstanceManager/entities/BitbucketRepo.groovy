@@ -4,11 +4,14 @@ import groovy.json.JsonOutput
 import kong.unirest.GenericType
 import kong.unirest.JsonObjectMapper
 import kong.unirest.Unirest
+import kong.unirest.UnirestInstance
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
-class BitbucketRepo {
+import java.lang.reflect.Type
 
-    static JsonObjectMapper objectMapper = Unirest.config().getObjectMapper() as JsonObjectMapper
+class BitbucketRepo implements BitbucketEntity {
+
+
 
     String slug
     String id
@@ -41,21 +44,11 @@ class BitbucketRepo {
         return object instanceof BitbucketRepo && this.name == object.name && this.id == object.id
     }
 
-    //An array of maps
-    static ArrayList<BitbucketRepo> fromJson(ArrayList<Map> rawJson) {
 
-        //def string = JsonOutput.toJson(rawJson)
-
-        return fromJson(JsonOutput.toJson(rawJson))
-    }
-
-    //A single map
-    static ArrayList<BitbucketRepo> fromJson(Map rawJson) {
-        return fromJson(JsonOutput.toJson(rawJson))
-    }
 
     //A json string
-    static ArrayList<BitbucketRepo> fromJson(String rawJson) {
+    ArrayList<BitbucketRepo> fromJson(String rawJson) {
+
 
         GenericType type
 

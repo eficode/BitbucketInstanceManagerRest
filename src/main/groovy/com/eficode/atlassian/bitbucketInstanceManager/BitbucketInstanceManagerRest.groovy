@@ -6,6 +6,7 @@ import kong.unirest.Cookie
 import kong.unirest.GenericType
 import org.apache.http.auth.UsernamePasswordCredentials
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.Status
 import org.eclipse.jgit.transport.PushResult
 import org.eclipse.jgit.transport.RemoteConfig
 import org.eclipse.jgit.transport.URIish
@@ -498,9 +499,15 @@ class BitbucketInstanceManagerRest {
     /** --- GIT CRUD --- **/
 
 
-
-    //Pushes the current branch
-    void pushToRepo(File localRepoDir, BitbucketRepo remoteRepo) {
+    /**
+     * Pushes the current check out branch in $localRepoDir to remoteRepo
+     * If the repo in $localRepoDir doesnt have a remote setup for $remoteRepo, one will be setup
+     * Push will be performed using $adminUsername
+     * @param localRepoDir A directory with a git repo
+     * @param remoteRepo The remote Bitbucket repo to push to.
+     * @return true on success
+     */
+    boolean pushToRepo(File localRepoDir, BitbucketRepo remoteRepo) {
 
         log.info("Pushing local repo to remote repo")
         log.info("\tLocal repo:..." + localRepoDir.absolutePath.takeRight(50))
@@ -532,14 +539,35 @@ class BitbucketInstanceManagerRest {
         }
 
 
-        ArrayList<PushResult> results = localRepo.push().setRemote(existingRemote.name).setCredentialsProvider(new UsernamePasswordCredentialsProvider(adminUsername, adminPassword)).call()
+        ArrayList<PushResult> results = localRepo.push().setRemote(existingRemote.name).setCredentialsProvider(new UsernamePasswordCredentialsProvider(adminUsername, adminPassword)).call() as  ArrayList<PushResult>
 
 
-        true
+        return  !results.empty
+
+
+    }
+
+
+    def getGitLogString(String startCommit, String endCommit) {
+
 
 
 
     }
+
+    /**
+     * Not finished
+
+    void gitCommit(File localRepoDir, String filePattern = "*") {
+        Git localRepo = Git.open(localRepoDir)
+
+        Status test = localRepo.status().call()
+
+
+        true
+    }
+
+     */
 
 
 }

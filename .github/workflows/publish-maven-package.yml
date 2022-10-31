@@ -46,7 +46,7 @@ jobs:
           echo Compiling, Packaging and Installing Groovy 2.5 version of library to local m2 directory
           mvn install -f pom-2.5.xml -Dmaven.repo.local=localm2/ -DcreateChecksum=true
           
-          echo Compiling, Packaging and Installing Groovy 2.5 version of library to local m2 directory
+          echo Compiling, Packaging and Installing Groovy 3.0 version of library to local m2 directory
           mvn install -f pom-3.0.xml -Dmaven.repo.local=localm2/ -DcreateChecksum=true
           
           echo Copying the new JAR files to repository which will be added to git branch "packages"
@@ -70,7 +70,7 @@ jobs:
           echo Adding repository files to git
           git add repository/*
           echo Committing changes
-          git commit -m "Updated packages to $VERSION"
+          git commit -m "Updated packages"
           echo Pushing changes
           git push
 

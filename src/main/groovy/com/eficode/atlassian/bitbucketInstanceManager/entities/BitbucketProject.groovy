@@ -5,14 +5,15 @@ import groovy.json.JsonSlurper
 import kong.unirest.GenericType
 import kong.unirest.JsonObjectMapper
 import kong.unirest.Unirest
+import kong.unirest.UnirestInstance
 import org.apache.groovy.json.internal.LazyMap
 import unirest.shaded.com.google.gson.annotations.SerializedName
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable
 
-class BitbucketProject {
+class BitbucketProject implements BitbucketEntity {
 
-    static JsonObjectMapper objectMapper = Unirest.config().getObjectMapper() as JsonObjectMapper
+
 
     String key
     String id
@@ -35,19 +36,11 @@ class BitbucketProject {
 
     }
 
-    //An array of maps
-    static ArrayList<BitbucketProject> fromJson(ArrayList<Map> rawJson) {
-
-        return fromJson(JsonOutput.toJson(rawJson))
-    }
-
-    //A single map
-    static ArrayList<BitbucketProject> fromJson(Map rawJson) {
-        return fromJson(JsonOutput.toJson(rawJson))
-    }
 
     //A json string
-    static ArrayList<BitbucketProject> fromJson(String rawJson) {
+    ArrayList<BitbucketProject> fromJson(String rawJson ) {
+
+        this.unirest = unirest
 
         GenericType type
 

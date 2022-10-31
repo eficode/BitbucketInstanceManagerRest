@@ -64,9 +64,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     Path projectRoot = new File("").absoluteFile.toPath()
 
 
-
-
-
     def setupSpec() {
 
         unirestInstance.config().defaultBaseUrl(baseUrl).setDefaultBasicAuth(restAdmin, restPw).enableCookieManagement(false)
@@ -92,7 +89,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     File setupLocalGitRepo() {
 
 
-        assert FileUtils.listFilesAndDirs(projectRoot.toFile(), TrueFileFilter.INSTANCE, null).any {it.name == ".git"}
+        assert FileUtils.listFilesAndDirs(projectRoot.toFile(), TrueFileFilter.INSTANCE, null).any { it.name == ".git" }
 
         File tempDir = Files.createTempDirectory(BitbucketInstanceManagerRestSpec.simpleName).toFile().absoluteFile
 
@@ -100,7 +97,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         FileUtils.copyDirectory(projectRoot.toFile(), tempDir)
 
 
-        assert FileUtils.listFilesAndDirs(tempDir, TrueFileFilter.INSTANCE, null).any {it.name == ".git"}
+        assert FileUtils.listFilesAndDirs(tempDir, TrueFileFilter.INSTANCE, null).any { it.name == ".git" }
 
         return tempDir
     }
@@ -117,10 +114,9 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         true
 
 
-
     }
 
-    def "Test git actions"(){
+    def "Test git actions"() {
 
         setup:
         BitbucketInstanceManagerRest bb = setupBb()
@@ -128,16 +124,31 @@ class BitbucketInstanceManagerRestSpec extends Specification {
             bb.deleteProject(it, true)
         }
 
-        BitbucketProject sampleProject =  bb.createProject("Sample Project", "SMP")
+        BitbucketProject sampleProject = bb.createProject("Sample Project", "SMP")
         BitbucketRepo sampleRepo = bb.createRepo(sampleProject, BitbucketInstanceManagerRestSpec.simpleName)
+
+
+        when: "When pushing the project git repo, to the new bitbucket project/repo"
         File localGitRepoDir = setupLocalGitRepo()
+        boolean pushSuccess = bb.pushToRepo(localGitRepoDir, sampleRepo)
 
-        when:
-        true
-        bb.pushToRepo(localGitRepoDir, sampleRepo)
 
-        then:
-        true
+        then: "Success should be returned"
+        pushSuccess
+
+        /**
+         Not finished
+         when: "When modifying a file in the new local repo"
+         File addedFile = new File(localGitRepoDir, "added.txt")
+         assert addedFile.createNewFile()
+         addedFile.text = "Spoc Testing"
+
+         bb.gitCommit(localGitRepoDir)
+
+         then:
+         true
+         *
+         */
 
         cleanup:
 
@@ -156,7 +167,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
             bb.deleteProject(it, true)
         }
 
-        BitbucketProject sampleProject =  bb.createProject("Sample Project", "SMP")
+        BitbucketProject sampleProject = bb.createProject("Sample Project", "SMP")
 
         when:
         BitbucketRepo firstRepo = bb.createRepo(sampleProject, "a repo with spaces")
@@ -198,7 +209,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
          */
 
 
-
     }
 
     def testProjectCrud() {
@@ -211,18 +221,17 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         }
 
 
-        ArrayList<BitbucketProject> projectsAtStart =  bb.getProjects()
+        ArrayList<BitbucketProject> projectsAtStart = bb.getProjects()
 
         BitbucketProject projectWithRepo = null
 
 
-
-        when:"Creating a project using private APIs"
+        when: "Creating a project using private APIs"
         String rndNr = System.currentTimeMillis().toString()[-5..-1]
         BitbucketProject newPrivProject = bb.createProject("New Project $rndNr with priv API", "NEWPRIV$rndNr", "A spock project: Using private API")
 
 
-        then:"Should return the new project, should be able to find it, and should have no repos"
+        then: "Should return the new project, should be able to find it, and should have no repos"
         newPrivProject != null
         newPrivProject.key == "NEWPRIV$rndNr"
         newPrivProject.name == "New Project $rndNr with priv API"
@@ -230,7 +239,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         bb.getRepos(newPrivProject).isEmpty()
 
         when: "Creating project using public APIs"
-        BitbucketProject newPubProject = bb.createProject( "NEWPUB$rndNr")
+        BitbucketProject newPubProject = bb.createProject("NEWPUB$rndNr")
 
         then:
         newPubProject != null
@@ -242,13 +251,13 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then: "Getting the raw data, it should match well with what the library returns"
         ArrayList<Map> projectsRaw = unirestInstance.get("/rest/api/latest/projects").asObject(Map).body.get("values") as ArrayList<Map>
-        BitbucketProject.fromJson(projectsRaw).id == projectsRaw.collect {BitbucketProject.fromJson(it)}.id.flatten() //Verify Converting singel project and list of projects return the same value
+        BitbucketProject.fromJson(projectsRaw).id == projectsRaw.collect { BitbucketProject.fromJson(it) }.id.flatten() //Verify Converting singel project and list of projects return the same value
         bb.getProjects().key.containsAll(BitbucketProject.fromJson(projectsRaw).key)
         bb.getProject(projectsRaw.first().key as String).id.toLong() == projectsRaw.first().id
         bb.getProjects().key.containsAll(projectsRaw.key)
 
 
-        when:"Deleting projects"
+        when: "Deleting projects"
         boolean pubDelete = bb.deleteProject(newPubProject.key)
         boolean privDelete = bb.deleteProject(newPrivProject.key)
 
@@ -259,10 +268,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         bb.getProject(newPrivProject.key) == null
 
 
-
         cleanup:
-        bb.getProjects().each {bb.deleteProject(it, true)}
-
+        bb.getProjects().each { bb.deleteProject(it, true) }
 
 
     }
