@@ -1,9 +1,15 @@
-package com.eficode.atlassian.bitbucketInstanceManager
+package com.eficode.atlassian.bitbucketInstanceManagerOld
 
-
+import com.eficode.atlassian.bitbucketInstanceManagerOld.entities.BitbucketProject
+import com.eficode.atlassian.bitbucketInstanceManagerOld.entities.BitbucketRepo
 import kong.unirest.Cookie
+import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.transport.PushResult
+import org.eclipse.jgit.transport.RemoteConfig
+import org.eclipse.jgit.transport.URIish
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
+import unirest.shaded.com.google.gson.JsonObject
 import kong.unirest.Cookies
-import kong.unirest.GenericType
 import kong.unirest.GetRequest
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
@@ -12,47 +18,50 @@ import kong.unirest.Unirest
 import kong.unirest.UnirestException
 import kong.unirest.UnirestInstance
 import kong.unirest.json.JSONArray
-import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.transport.PushResult
-import org.eclipse.jgit.transport.RemoteConfig
-import org.eclipse.jgit.transport.URIish
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import unirest.shaded.com.google.gson.JsonObject
-import unirest.shaded.com.google.gson.annotations.SerializedName
 
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
-
 class BitbucketInstanceManagerRest {
 
-    Logger log = LoggerFactory.getLogger(BitbucketInstanceManagerRest.class)
-    String adminUsername
-    String adminPassword
-    JsonObjectMapper objectMapper
-    String baseUrl
+    static Logger log = LoggerFactory.getLogger(BitbucketInstanceManagerRest.class)
+    public static String baseUrl = "http://localhost:7990"
+    static Cookies cookies
+    public String adminUsername = "admin"
+    public String adminPassword = "admin"
+    JsonObjectMapper objectMapper = Unirest.config().getObjectMapper() as JsonObjectMapper
 
-    BitbucketInstanceManagerRest(String username, String password, String baseUrl) {
-        this.baseUrl = baseUrl
-        this.adminUsername = username
-        this.adminPassword = password
 
+    /**
+     * Setup BitbucketInstanceManagerRest with admin/admin as credentials.
+     * @param BaseUrl Defaults to http://localhost:8080
+     */
+    BitbucketInstanceManagerRest(String BaseUrl = baseUrl) {
+        baseUrl = BaseUrl
+        Unirest.config().defaultBaseUrl(BaseUrl)
 
     }
 
+    /**
+     * Setup BitbucketInstanceManagerRest with custom credentials
+     * @param BaseUrl Defaults to http://localhost:7990
+     * @param username
+     * @param password
+     */
+    BitbucketInstanceManagerRest(String username, String password, String BaseUrl = baseUrl) {
+        baseUrl = BaseUrl
+        Unirest.config().defaultBaseUrl(baseUrl)
+        adminUsername = username
+        adminPassword = password
 
-    /** --- Generic Helper Methods --- **/
+    }
 
-    UnirestInstance getNewUnirest(boolean withBasicAuth = true) {
+    UnirestInstance getNewUnirest() {
 
         UnirestInstance unirest = Unirest.spawnInstance()
-        unirest.config().defaultBaseUrl(baseUrl)
-
-        if (withBasicAuth) {
-            unirest.config().setDefaultBasicAuth(adminUsername, adminPassword)
-        }
+        unirest.config().defaultBaseUrl(baseUrl).setDefaultBasicAuth(adminPassword, adminPassword)
 
         return unirest
     }
@@ -76,6 +85,40 @@ class BitbucketInstanceManagerRest {
 
         return existingCookies
 
+    }
+
+    /**
+     * Unirest by default gets lost when several redirects return cookies, this method will retain them
+     * @param path
+     * @return
+     */
+    Cookies getCookiesFromRedirect(String path, String username = adminUsername, String password = adminPassword, Map headers = [:]) {
+
+        UnirestInstance unirestInstance = newUnirest
+        unirestInstance.config().followRedirects(false)
+
+        Cookies cookies = new Cookies()
+        GetRequest getRequest = unirestInstance.get(path).headers(headers)
+        if (username && password) {
+            getRequest.basicAuth(username, password)
+        }
+        HttpResponse getResponse = getRequest.asString()
+        cookies = extractCookiesFromResponse(getResponse, cookies)
+
+        String newLocation = getResponse.headers.getFirst("Location")
+
+        while (getResponse.status == 302) {
+
+
+            newLocation = resolveRedirectPath(getResponse, newLocation)
+            getResponse = unirestInstance.get(newLocation).asString()
+            cookies = extractCookiesFromResponse(getResponse, cookies)
+
+        }
+
+
+        unirestInstance.shutDown()
+        return cookies
     }
 
     static String resolveRedirectPath(HttpResponse response, String previousPath = null) {
@@ -102,6 +145,112 @@ class BitbucketInstanceManagerRest {
 
     }
 
+    boolean setApplicationProperties(String bbLicense, String appTitle = "Bitbucket", String baseUrl = this.baseUrl) {
+        log.info("Setting up initial application properties")
+
+        UnirestInstance unirestInstance = newUnirest
+        unirestInstance.config().socketTimeout(1000)
+
+        long startTime = System.currentTimeMillis()
+
+        while (startTime + (5 * 60000) > System.currentTimeMillis()) {
+            try {
+                HttpResponse<String> response = unirestInstance.get("/setup").asString()
+
+
+                if (response?.body?.contains("<span>Database</span>")) {
+                    log.info("\tBitbucket has started and the Setup dialog has appeared")
+                    unirestInstance.shutDown()
+                    break
+                } else {
+                    log.info("\tBitbucket has started but the Setup dialog has not appeared yet, waited ${((System.currentTimeMillis() - startTime) / 1000).round(0)}s")
+                    sleep(5000)
+                }
+
+            } catch (UnirestException ex) {
+
+                log.info("---- Bitbucket not available yet ----")
+                log.debug("\tGot error when trying to access bitbucket:" + ex.message)
+                sleep(1000)
+            }
+        }
+        unirestInstance.shutDown()
+
+
+        cookies = Unirest.get("/setup").asString().cookies
+        assert cookies.find { it.name == "BITBUCKETSESSIONID" }
+        HttpResponse bodyString = Unirest.get("/setup").cookie(cookies).asString()
+
+        String atlToken = searchBodyForAtlToken(bodyString.body)
+        HttpResponse setDBResponse = Unirest.post("/setup")
+                .cookie(cookies)
+                .field("atl_token", atlToken)
+                .field("locale", "en_US")
+                .field("step", "database")
+                .field("internal", "true")
+                .field("type", "postgres")
+                .field("hostname", "")
+                .field("port", "5432")
+                .field("database", "")
+                .field("username", "")
+                .field("password", "")
+                .field("submit", "next")
+                .asString()
+
+        assert setDBResponse.status == 302: "Error setting local database"
+        log.info("\tFinished setting up local database")
+
+        HttpResponse setPropResponse = Unirest.post("/setup")
+                .cookie(cookies)
+                .field("step", "settings")
+                .field("applicationTitle", appTitle)
+                .field("baseUrl", baseUrl)
+                .field("license", bbLicense)
+                .field("licenseDisplay", bbLicense)
+                .field("submit", "next")
+                .field("atl_token", atlToken)
+                .asString()
+        assert setPropResponse.status == 302: "Error setting application properties or license"
+        log.info("\tFinished setting up licence")
+
+        HttpResponse setAdminResponse = Unirest.post("/setup")
+                .cookie(cookies)
+                .field("step", "user")
+                .field("atl_token", atlToken)
+                .field("username", adminUsername)
+                .field("fullname", adminUsername)
+                .field("email", adminUsername + "@" + adminUsername + ".com")
+                .field("password", adminPassword)
+                .field("confirmPassword", adminPassword)
+                .field("skipJira", "Go to Bitbucket")
+                .asString()
+
+        assert setAdminResponse.status == 302: "Error setting admin account"
+        log.info("\tFinished setting up admin account, you should be able to reach Bitbucket on:" + baseUrl)
+
+        return true
+    }
+
+    String getStatus() {
+
+        Map statusMap = Unirest.get("/status").asJson()?.body?.object?.toMap()
+
+        return statusMap?.state
+    }
+
+
+    /*
+    def getJsonObjects(String subPath, GenericType type) {
+
+
+        ArrayList rawObjects = getJsonPages(subPath, true)
+
+        return objectMapper.readValue(rawObjects.toString(), type)
+
+
+    }
+
+     */
 
     ArrayList getJsonPages(String subPath, boolean returnValueOnly = true, int maxPages = 50) {
 
@@ -147,106 +296,6 @@ class BitbucketInstanceManagerRest {
 
 
     }
-
-
-    /** --- Instance Methods --- **/
-
-    boolean setApplicationProperties(String bbLicense, String appTitle = "Bitbucket", String baseUrl = this.baseUrl) {
-        log.info("Setting up initial application properties")
-
-        UnirestInstance unirestInstance = getNewUnirest(false)
-
-        unirestInstance.config().socketTimeout(1000)
-
-        long startTime = System.currentTimeMillis()
-
-        while (startTime + (5 * 60000) > System.currentTimeMillis()) {
-            try {
-                HttpResponse<String> response = unirestInstance.get("/setup").accept("text/html").asString()
-
-
-                if (response?.body?.contains("<span>Database</span>")) {
-                    log.info("\tThe Setup dialog has appeared")
-                    break
-                } else {
-                    log.info("\tBitbucket has started but the Setup dialog has not appeared yet, waited ${((System.currentTimeMillis() - startTime) / 1000).round(0)}s")
-                    sleep(5000)
-                }
-
-            } catch (UnirestException ex) {
-
-                log.info("---- Bitbucket not available yet ----")
-                log.debug("\tGot error when trying to access bitbucket:" + ex.message)
-                sleep(1000)
-            }
-        }
-
-
-
-        unirestInstance.shutDown()
-        unirestInstance = getNewUnirest(false)
-        Cookies cookies = unirestInstance.get("/setup").asString().cookies
-        assert cookies.find { it.name == "BITBUCKETSESSIONID" }
-        HttpResponse bodyString = unirestInstance.get("/setup").cookie(cookies).asString()
-
-        String atlToken = searchBodyForAtlToken(bodyString.body)
-        HttpResponse setDBResponse = unirestInstance.post("/setup")
-                .cookie(cookies)
-                .field("atl_token", atlToken)
-                .field("locale", "en_US")
-                .field("step", "database")
-                .field("internal", "true")
-                .field("type", "postgres")
-                .field("hostname", "")
-                .field("port", "5432")
-                .field("database", "")
-                .field("username", "")
-                .field("password", "")
-                .field("submit", "next")
-                .asString()
-
-        assert setDBResponse.status == 302: "Error setting local database"
-        log.info("\tFinished setting up local database")
-
-        HttpResponse setPropResponse = unirestInstance.post("/setup")
-                .cookie(cookies)
-                .field("step", "settings")
-                .field("applicationTitle", appTitle)
-                .field("baseUrl", baseUrl)
-                .field("license", bbLicense)
-                .field("licenseDisplay", bbLicense)
-                .field("submit", "next")
-                .field("atl_token", atlToken)
-                .asString()
-        assert setPropResponse.status == 302: "Error setting application properties or license"
-        log.info("\tFinished setting up licence")
-
-        HttpResponse setAdminResponse = unirestInstance.post("/setup")
-                .cookie(cookies)
-                .field("step", "user")
-                .field("atl_token", atlToken)
-                .field("username", adminUsername)
-                .field("fullname", adminUsername)
-                .field("email", adminUsername + "@" + adminUsername + ".com")
-                .field("password", adminPassword)
-                .field("confirmPassword", adminPassword)
-                .field("skipJira", "Go to Bitbucket")
-                .asString()
-
-        assert setAdminResponse.status == 302: "Error setting admin account"
-        log.info("\tFinished setting up admin account, you should be able to reach Bitbucket on:" + baseUrl)
-
-        unirestInstance.shutDown()
-        return true
-    }
-
-    String getStatus() {
-
-        Map statusMap = newUnirest.get("/status").asJson()?.body?.object?.toMap()
-
-        return statusMap?.state
-    }
-
 
     /** --- Project CRUD --- **/
 
@@ -298,7 +347,7 @@ class BitbucketInstanceManagerRest {
             if (deleteProjectRepos && messages.size() == 1 && messages.first().contains("The project \"$projectKey\" cannot be deleted because it has repositories")) {
                 log.info("\tProject has repositories, deleting them now")
 
-                ArrayList<com.eficode.atlassian.bitbucketInstanceManagerOld.entities.BitbucketRepo> projectRepos = getRepos(projectKey)
+                ArrayList<BitbucketRepo> projectRepos = getRepos(projectKey)
                 log.info("\t\tRepos:" + projectRepos.name.join(", "))
 
                 assert deleteRepos(projectRepos): "Error deleting project repos"
@@ -376,8 +425,6 @@ class BitbucketInstanceManagerRest {
 
     }
 
-
-
     /** --- Repo CRUD --- **/
 
     BitbucketRepo getRepo(String projectKey, String repoNameOrSlug) {
@@ -442,8 +489,6 @@ class BitbucketInstanceManagerRest {
         return deleteRepos([bitbucketRepo])
     }
 
-
-
     /** --- GIT CRUD --- **/
 
 
@@ -506,127 +551,16 @@ class BitbucketInstanceManagerRest {
     /**
      * Not finished
 
-     void gitCommit(File localRepoDir, String filePattern = "*") {
-     Git localRepo = Git.open(localRepoDir)
+    void gitCommit(File localRepoDir, String filePattern = "*") {
+        Git localRepo = Git.open(localRepoDir)
 
-     Status test = localRepo.status().call()
+        Status test = localRepo.status().call()
 
 
-     true
-     }
+        true
+    }
 
      */
-    
-    
-
-
-    class BitbucketRepo implements BitbucketJsonEntity{
-
-
-        String slug
-        String id
-        String name
-        String hierarchyId
-        String scmId
-        String state
-        String statusMessage
-        boolean forkable
-        BitbucketProject project
-
-        @SerializedName("public")
-        boolean isPublic
-        boolean archived
-        Map<String, ArrayList> links = ["clone": [[:]], "self": [[:]]]
-
-
-        boolean isValid() {
-
-            return slug && id && name && hierarchyId && project?.isValid()
-
-        }
-
-        String toString() {
-            return project?.name + "/" + name
-        }
-
-        boolean equals(Object object) {
-
-            return object instanceof BitbucketRepo && this.name == object.name && this.id == object.id
-        }
-
-
-
-
-        static ArrayList<BitbucketRepo> fromJson(String rawJson) {
-
-
-            GenericType type
-
-            if (rawJson.startsWith("[")) {
-                type = new GenericType<ArrayList<BitbucketRepo>>() {}
-
-                return objectMapper.readValue(rawJson, type) as ArrayList<BitbucketRepo>
-            } else if (rawJson.startsWith("{")) {
-                type = new GenericType<BitbucketRepo>() {}
-                return [objectMapper.readValue(rawJson, type)] as ArrayList<BitbucketRepo>
-            } else {
-                throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
-            }
-
-
-        }
-
-
-
-    }
-
-
-    class BitbucketProject implements BitbucketJsonEntity {
-
-        String key
-        String id
-        String name
-        String type
-        Map<String, ArrayList> links
-        //static JsonObjectMapper objectMapper = Unirest.config().getObjectMapper() as JsonObjectMapper
-
-        @SerializedName("public")
-        boolean isPublic
-
-
-        boolean equals(Object object) {
-
-            return object instanceof BitbucketProject && this.key == object.key && this.id == object.id
-        }
-
-        boolean isValid() {
-
-            return key && id && name && type
-
-        }
-
-
-        //A json string
-        static ArrayList<BitbucketProject> fromJson(String rawJson ) {
-
-
-            GenericType type
-
-            if (rawJson.startsWith("[")) {
-                type = new GenericType<ArrayList<BitbucketProject>>() {}
-                return objectMapper.readValue(rawJson, type).findAll {it.isValid()} as ArrayList<BitbucketProject>
-            } else if (rawJson.startsWith("{")) {
-                type = new GenericType<BitbucketProject>() {}
-                return [objectMapper.readValue(rawJson, type)].findAll {it.isValid()} as ArrayList<BitbucketProject>
-            } else {
-                throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
-            }
-
-
-        }
-
-
-    }
 
 
 }

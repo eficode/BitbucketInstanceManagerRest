@@ -1,22 +1,17 @@
 package com.eficode.atlassian.bitbucketInstanceManger
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.entities.BitbucketProject
-import com.eficode.atlassian.bitbucketInstanceManager.entities.BitbucketRepo
+import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo as BitbucketRepo
+import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
+import com.eficode.devstack.container.impl.BitbucketContainer
 import kong.unirest.Unirest
 import kong.unirest.UnirestInstance
 import org.apache.commons.io.FileUtils
-import org.apache.commons.io.filefilter.DirectoryFileFilter
-import org.apache.commons.io.filefilter.FalseFileFilter
-import org.apache.commons.io.filefilter.FileFilterUtils
-import org.apache.commons.io.filefilter.IOFileFilter
-import org.apache.commons.io.filefilter.NotFileFilter
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import spock.lang.Shared
 import spock.lang.Specification
-import unirest.shaded.com.google.gson.JsonObject
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -63,10 +58,21 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     @Shared
     Path projectRoot = new File("").absoluteFile.toPath()
 
+    @Shared
+    BitbucketContainer bitbucketContainer = new BitbucketContainer(baseUrl)
 
+
+
+    // run before the first feature method
     def setupSpec() {
 
         unirestInstance.config().defaultBaseUrl(baseUrl).setDefaultBasicAuth(restAdmin, restPw).enableCookieManagement(false)
+
+        //bitbucketContainer.containerImageTag = "8.5.0"
+        bitbucketContainer.containerName = bitbucketContainer.extractDomainFromUrl(baseUrl)
+        //bitbucketContainer.stopAndRemoveContainer()
+        //bitbucketContainer.createContainer()
+        //bitbucketContainer.startContainer()
     }
 
 
@@ -110,8 +116,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         bb.setApplicationProperties(bitbucketLicense, "Bitbucket", baseUrl)
 
         expect:
-        //bb.status == "RUNNING"
-        true
+        bb.status == "RUNNING"
 
 
     }
@@ -251,10 +256,15 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then: "Getting the raw data, it should match well with what the library returns"
         ArrayList<Map> projectsRaw = unirestInstance.get("/rest/api/latest/projects").asObject(Map).body.get("values") as ArrayList<Map>
+        assert projectsRaw instanceof  ArrayList
+        assert projectsRaw.first() instanceof Map
+
         BitbucketProject.fromJson(projectsRaw).id == projectsRaw.collect { BitbucketProject.fromJson(it) }.id.flatten() //Verify Converting singel project and list of projects return the same value
         bb.getProjects().key.containsAll(BitbucketProject.fromJson(projectsRaw).key)
         bb.getProject(projectsRaw.first().key as String).id.toLong() == projectsRaw.first().id
         bb.getProjects().key.containsAll(projectsRaw.key)
+
+
 
 
         when: "Deleting projects"

@@ -14,6 +14,19 @@
     <dependencies>
 
 
+        <dependency>
+            <groupId>com.eficode</groupId>
+            <artifactId>devstack</artifactId>
+            <version>2.0.1-SNAPSHOT-groovy-${groovy.major.version}</version>
+            <classifier>standalone</classifier>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.eficode.shaded</groupId>
+                    <artifactId>devstack</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
 
         <dependency>
             <groupId>org.codehaus.groovy</groupId>

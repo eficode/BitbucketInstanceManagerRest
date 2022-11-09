@@ -1,4 +1,4 @@
-package com.eficode.atlassian.bitbucketInstanceManager.entities
+package com.eficode.atlassian.bitbucketInstanceManagerOld.entities
 
 import groovy.json.JsonOutput
 import kong.unirest.JsonObjectMapper

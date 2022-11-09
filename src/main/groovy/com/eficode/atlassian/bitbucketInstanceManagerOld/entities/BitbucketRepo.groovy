@@ -1,13 +1,8 @@
-package com.eficode.atlassian.bitbucketInstanceManager.entities
+package com.eficode.atlassian.bitbucketInstanceManagerOld.entities
 
-import groovy.json.JsonOutput
+
 import kong.unirest.GenericType
-import kong.unirest.JsonObjectMapper
-import kong.unirest.Unirest
-import kong.unirest.UnirestInstance
 import unirest.shaded.com.google.gson.annotations.SerializedName
-
-import java.lang.reflect.Type
 
 class BitbucketRepo implements BitbucketEntity {
 
