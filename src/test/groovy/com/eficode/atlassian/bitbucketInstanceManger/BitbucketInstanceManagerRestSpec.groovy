@@ -18,20 +18,10 @@ import java.nio.file.Path
 
 
 /**
- * Presumes that the Bitbucket instance at baseUrl
- *      has been started for the first time ever
+ * Presumes that there is a Docker engine listening on the default socket
  *      bitbucketLicensePath points to a file containing a Bitbucket license
  *      baseUrl points to the url (and port) of bitbucket
  *
- *  Example script using devStack: https://github.com/eficode/devStack
- *
- *
- *
- import com.eficode.devstack.container.impl.BitbucketContainer
- BitbucketContainer bitbucketContainer = new BitbucketContainer(dockerHost, dockerCertPath)
- bitbucketContainer.stopAndRemoveContainer()
- bitbucketContainer.createContainer()
- bitbucketContainer.startContainer()
  */
 
 class BitbucketInstanceManagerRestSpec extends Specification {

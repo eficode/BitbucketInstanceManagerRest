@@ -298,7 +298,7 @@ class BitbucketInstanceManagerRest {
             if (deleteProjectRepos && messages.size() == 1 && messages.first().contains("The project \"$projectKey\" cannot be deleted because it has repositories")) {
                 log.info("\tProject has repositories, deleting them now")
 
-                ArrayList<com.eficode.atlassian.bitbucketInstanceManagerOld.entities.BitbucketRepo> projectRepos = getRepos(projectKey)
+                ArrayList<BitbucketRepo> projectRepos = getRepos(projectKey)
                 log.info("\t\tRepos:" + projectRepos.name.join(", "))
 
                 assert deleteRepos(projectRepos): "Error deleting project repos"
