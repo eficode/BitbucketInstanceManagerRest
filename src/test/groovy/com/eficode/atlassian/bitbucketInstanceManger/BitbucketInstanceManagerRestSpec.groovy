@@ -8,6 +8,7 @@ import kong.unirest.Unirest
 import kong.unirest.UnirestInstance
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
+import org.eclipse.jgit.api.Git
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import spock.lang.Shared
@@ -52,7 +53,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     BitbucketContainer bitbucketContainer = new BitbucketContainer(baseUrl)
 
 
-
     // run before the first feature method
     def setupSpec() {
 
@@ -77,21 +77,19 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
     /**
-     * Makes sure $projectRoot contains .git
-     * Copies the project dir to a new temporary directory
+     *
+     * Mirrors this project from github
      *
      * @return File object of the new temp folder
      */
     File setupLocalGitRepo() {
 
-
-        assert FileUtils.listFilesAndDirs(projectRoot.toFile(), TrueFileFilter.INSTANCE, null).any { it.name == ".git" }
-
         File tempDir = Files.createTempDirectory(BitbucketInstanceManagerRestSpec.simpleName).toFile().absoluteFile
 
+        BitbucketInstanceManagerRest.mirrorRepo(tempDir, "https://github.com/eficode/BitbucketInstanceManagerRest.git")
 
-        FileUtils.copyDirectory(projectRoot.toFile(), tempDir)
-
+        //Delete the large packages branch from the local repo
+        Git.open(tempDir).branchDelete().setBranchNames("packages").setForce(true).call()
 
         assert FileUtils.listFilesAndDirs(tempDir, TrueFileFilter.INSTANCE, null).any { it.name == ".git" }
 
@@ -125,25 +123,19 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         when: "When pushing the project git repo, to the new bitbucket project/repo"
         File localGitRepoDir = setupLocalGitRepo()
-        boolean pushSuccess = bb.pushToRepo(localGitRepoDir, sampleRepo)
+        boolean pushSuccess = bb.pushToRepo(localGitRepoDir, sampleRepo, true)
 
 
         then: "Success should be returned"
         pushSuccess
 
-        /**
-         Not finished
-         when: "When modifying a file in the new local repo"
-         File addedFile = new File(localGitRepoDir, "added.txt")
-         assert addedFile.createNewFile()
-         addedFile.text = "Spoc Testing"
+        when:
+        bb.getCommits(sampleRepo)
 
-         bb.gitCommit(localGitRepoDir)
 
-         then:
-         true
-         *
-         */
+        then:
+
+        true
 
         cleanup:
 
@@ -246,15 +238,13 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then: "Getting the raw data, it should match well with what the library returns"
         ArrayList<Map> projectsRaw = unirestInstance.get("/rest/api/latest/projects").asObject(Map).body.get("values") as ArrayList<Map>
-        assert projectsRaw instanceof  ArrayList
+        assert projectsRaw instanceof ArrayList
         assert projectsRaw.first() instanceof Map
 
         BitbucketProject.fromJson(projectsRaw).id == projectsRaw.collect { BitbucketProject.fromJson(it) }.id.flatten() //Verify Converting singel project and list of projects return the same value
         bb.getProjects().key.containsAll(BitbucketProject.fromJson(projectsRaw).key)
         bb.getProject(projectsRaw.first().key as String).id.toLong() == projectsRaw.first().id
         bb.getProjects().key.containsAll(projectsRaw.key)
-
-
 
 
         when: "Deleting projects"

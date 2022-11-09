@@ -13,7 +13,13 @@ import kong.unirest.UnirestException
 import kong.unirest.UnirestInstance
 import kong.unirest.json.JSONArray
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.PushCommand
+import org.eclipse.jgit.api.TransportCommand
+import org.eclipse.jgit.lib.Ref
+import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.lib.StoredConfig
 import org.eclipse.jgit.transport.PushResult
+import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.RemoteConfig
 import org.eclipse.jgit.transport.URIish
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
@@ -126,12 +132,13 @@ class BitbucketInstanceManagerRest {
 
 
             isLastPage = response?.body?.object?.has("isLastPage") ? response?.body?.object?.get("isLastPage") as boolean : true
-            start = response?.body?.object?.has("nextPageStart") ? response?.body?.object?.get("nextPageStart") as int : -1
+            //start = response?.body?.object?.has("nextPageStart") ? response?.body?.object?.get("nextPageStart") as int : -1
+            start = response?.body?.object?.has("nextPageStart") && response.body.object["nextPageStart"] != null  ? response.body.object["nextPageStart"] as int : -1
 
             if (returnValueOnly) {
                 if (response.body.object.has("values")) {
                     responses += response.body.object.get("values") as ArrayList<Map>
-                }else {
+                } else {
                     throw new InputMismatchException("Unexpected body returned from $subPath, expected JSON with \"values\"-node but got: " + response.body.toString())
                 }
 
@@ -180,7 +187,6 @@ class BitbucketInstanceManagerRest {
                 sleep(1000)
             }
         }
-
 
 
         unirestInstance.shutDown()
@@ -377,13 +383,12 @@ class BitbucketInstanceManagerRest {
     }
 
 
-
     /** --- Repo CRUD --- **/
 
     BitbucketRepo getRepo(String projectKey, String repoNameOrSlug) {
         ArrayList<BitbucketRepo> projectRepos = getRepos(projectKey)
 
-        return projectRepos.find {it.name == repoNameOrSlug || it.slug == repoNameOrSlug}
+        return projectRepos.find { it.name == repoNameOrSlug || it.slug == repoNameOrSlug }
 
     }
 
@@ -443,6 +448,27 @@ class BitbucketInstanceManagerRest {
     }
 
 
+    /** --- Repo history --- **/
+
+    def getCommits(BitbucketRepo repo, String fromId = "", String toId = "") {
+        //fromID is exclusive
+
+        ArrayList<String> urlParameters = []
+
+        fromId ? urlParameters.add("since=$fromId") : null
+        toId ? urlParameters.add("until=$toId") : null
+
+        String url = "/rest/api/latest/projects/${repo.project.key}/repos/${repo.slug}/commits"
+
+        urlParameters ? (url += "?" + urlParameters.join("&")) : null
+
+        ArrayList rawCommits = getJsonPages(url)
+
+        return rawCommits
+
+
+    }
+
 
     /** --- GIT CRUD --- **/
 
@@ -455,53 +481,83 @@ class BitbucketInstanceManagerRest {
      * @param remoteRepo The remote Bitbucket repo to push to.
      * @return true on success
      */
-    boolean pushToRepo(File localRepoDir, BitbucketRepo remoteRepo) {
+    boolean pushToRepo(File localRepoDir, BitbucketRepo remoteRepo, boolean pushAllBranches = false) {
 
         log.info("Pushing local repo to remote repo")
         log.info("\tLocal repo:..." + localRepoDir.absolutePath.takeRight(50))
 
         Git localRepo = Git.open(localRepoDir)
-        URIish suppliedRepoUrl = new URIish( remoteRepo.links.get("clone").find {it.name.contains("http")}.href as String)
+        URIish suppliedRepoUrl = new URIish(remoteRepo.links.get("clone").find { it.name.contains("http") }.href as String)
 
         log.info("\tRemote repo:" + suppliedRepoUrl.toString())
 
 
-
         List<RemoteConfig> remoteList = localRepo.remoteList().call()
 
-        RemoteConfig existingRemote = remoteList.find {remote ->
-            remote.getURIs().any {it.path == suppliedRepoUrl.path && it.host == suppliedRepoUrl.host}
+        RemoteConfig existingRemote = remoteList.find { remote ->
+            remote.getURIs().any { it.path == suppliedRepoUrl.path && it.host == suppliedRepoUrl.host }
         }
 
         if (existingRemote) {
             log.info("\tLocal repo already has the needed git remote:" + existingRemote.toString())
-        }else {
+        } else {
             log.info("\tLocal repo is missing git remote, adding it now")
 
-            assert localRepo.remoteAdd().setUri(suppliedRepoUrl).setName(remoteRepo.name).call() : "Error adding new remote:" + suppliedRepoUrl.toString()
-            existingRemote = localRepo.remoteList().call().find {it.name == remoteRepo.name}
+            assert localRepo.remoteAdd().setUri(suppliedRepoUrl).setName(remoteRepo.name).call(): "Error adding new remote:" + suppliedRepoUrl.toString()
+            existingRemote = localRepo.remoteList().call().find { it.name == remoteRepo.name }
 
-            assert existingRemote : "Error finding Git Remote after adding it"
+            assert existingRemote: "Error finding Git Remote after adding it"
 
             log.info("\t\tFinished adding new git remote")
         }
 
+        TransportCommand pushCommand = localRepo.push().setRemote(existingRemote.name).setCredentialsProvider(new UsernamePasswordCredentialsProvider(adminUsername, adminPassword))
 
-        ArrayList<PushResult> results = localRepo.push().setRemote(existingRemote.name).setCredentialsProvider(new UsernamePasswordCredentialsProvider(adminUsername, adminPassword)).call() as  ArrayList<PushResult>
+
+        if (pushAllBranches) {
+            ArrayList<RefSpec> branches = localRepo.branchList().call().collect { new RefSpec(it.getName()) }
+            pushCommand.setRefSpecs(branches)
+        }
 
 
-        return  !results.empty
+        ArrayList<PushResult> results = pushCommand.call() as ArrayList<PushResult>
+
+
+        return !results.empty
 
 
     }
 
 
-    def getGitLogString(String startCommit, String endCommit) {
+    /**
+     * Mirrors a repo (downloads all branches and their data) and checks out the apparent main branch
+     * @param outputDir an empty dir to checkout/mirror to
+     * @param srcUrl Url to mirror from
+     * @return true on success
+     */
+    static boolean mirrorRepo(File outputDir, String srcUrl) {
+
+        Git git = Git.cloneRepository().setURI(srcUrl).setDirectory(new File(outputDir.canonicalPath + "/.git")).setMirror(true).call()
 
 
+        //Set bare to false
+        StoredConfig config = git.repository.getConfig()
+        config.setBoolean("core", null, "bare", false)
+        config.save()
 
+        //Try and determine remotes main branch, if it fails default to master
+        String mainBranch = git.lsRemote().call().find { it.name == "HEAD" }?.target?.name ?: "master"
+        mainBranch = mainBranch.takeRight(mainBranch.length() - mainBranch.lastIndexOf("/") - 1)
+
+        //Reopen repo
+        git = Git.open(outputDir)
+        //Checkout main branch
+        git.checkout().setName(mainBranch).call()
+
+        return true
 
     }
+
 
     /**
      * Not finished
@@ -516,11 +572,9 @@ class BitbucketInstanceManagerRest {
      }
 
      */
-    
-    
 
 
-    class BitbucketRepo implements BitbucketJsonEntity{
+    class BitbucketRepo implements BitbucketJsonEntity {
 
 
         String slug
@@ -555,8 +609,6 @@ class BitbucketInstanceManagerRest {
         }
 
 
-
-
         static ArrayList<BitbucketRepo> fromJson(String rawJson) {
 
 
@@ -565,17 +617,16 @@ class BitbucketInstanceManagerRest {
             if (rawJson.startsWith("[")) {
                 type = new GenericType<ArrayList<BitbucketRepo>>() {}
 
-                return objectMapper.readValue(rawJson, type) as ArrayList<BitbucketRepo>
+                return getObjectMapper().readValue(rawJson, type) as ArrayList<BitbucketRepo>
             } else if (rawJson.startsWith("{")) {
                 type = new GenericType<BitbucketRepo>() {}
-                return [objectMapper.readValue(rawJson, type)] as ArrayList<BitbucketRepo>
+                return [getObjectMapper().readValue(rawJson, type)] as ArrayList<BitbucketRepo>
             } else {
                 throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
             }
 
 
         }
-
 
 
     }
@@ -607,17 +658,17 @@ class BitbucketInstanceManagerRest {
 
 
         //A json string
-        static ArrayList<BitbucketProject> fromJson(String rawJson ) {
+        static ArrayList<BitbucketProject> fromJson(String rawJson) {
 
 
             GenericType type
 
             if (rawJson.startsWith("[")) {
                 type = new GenericType<ArrayList<BitbucketProject>>() {}
-                return objectMapper.readValue(rawJson, type).findAll {it.isValid()} as ArrayList<BitbucketProject>
+                return getObjectMapper().readValue(rawJson, type).findAll { it.isValid() } as ArrayList<BitbucketProject>
             } else if (rawJson.startsWith("{")) {
                 type = new GenericType<BitbucketProject>() {}
-                return [objectMapper.readValue(rawJson, type)].findAll {it.isValid()} as ArrayList<BitbucketProject>
+                return [getObjectMapper().readValue(rawJson, type)].findAll { it.isValid() } as ArrayList<BitbucketProject>
             } else {
                 throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
             }
