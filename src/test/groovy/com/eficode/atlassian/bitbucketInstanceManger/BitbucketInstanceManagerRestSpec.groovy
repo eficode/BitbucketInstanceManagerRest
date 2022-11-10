@@ -135,6 +135,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then: "Success should be returned"
         pushSuccess
+        sampleProject instanceof BitbucketProject
+        sampleRepo instanceof BitbucketRepo
 
 
         when:
@@ -144,6 +146,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then:
         allCommits.size() >= 5
+        allCommits.every {it instanceof BitbucketCommit}
         !subsetCommits.any {it == allCommits[5]}
         allCommits.size() >= subsetCommits.size()
 

@@ -1,5 +1,6 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
+import com.google.gson.reflect.TypeToken
 import groovyjarjarantlr4.v4.runtime.atn.PredicateTransition
 import kong.unirest.Cookie
 import kong.unirest.Cookies
@@ -29,6 +30,7 @@ import unirest.shaded.com.google.gson.JsonObject
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
 import java.lang.reflect.Field
+import java.lang.reflect.Type
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
@@ -38,7 +40,7 @@ class BitbucketInstanceManagerRest {
     Logger log = LoggerFactory.getLogger(BitbucketInstanceManagerRest.class)
     String adminUsername
     String adminPassword
-    JsonObjectMapper objectMapper
+    //JsonObjectMapper objectMapper
     String baseUrl
 
     BitbucketInstanceManagerRest(String username, String password, String baseUrl) {
@@ -560,7 +562,7 @@ class BitbucketInstanceManagerRest {
      */
 
 
-    static class BitbucketCommit implements BitbucketJsonEntity {
+    class BitbucketCommit implements BitbucketJsonEntity {
 
         String id
         String displayId
@@ -590,19 +592,21 @@ class BitbucketInstanceManagerRest {
         }
 
 
+
         static ArrayList<BitbucketCommit> fromJson(String rawJson, BitbucketRepo parent) {
 
 
-            GenericType type
+            Type type
             ArrayList result
 
             if (rawJson.startsWith("[")) {
-                type = new GenericType<ArrayList<BitbucketCommit>>() {}
 
-                result =  getObjectMapper().readValue(rawJson, type) as ArrayList<BitbucketCommit>
+                type = TypeToken.getParameterized(ArrayList.class, this).getType()
+
+                result =  getObjectMapper().fromJson(rawJson,type)
             } else if (rawJson.startsWith("{")) {
-                type = new GenericType<BitbucketCommit>() {}
-                result =  [getObjectMapper().readValue(rawJson, type)] as ArrayList<BitbucketCommit>
+                type = TypeToken.getParameterized(this).getType()
+                result =  [getObjectMapper().fromJson(rawJson, type)]
             } else {
                 throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
             }
@@ -657,16 +661,17 @@ class BitbucketInstanceManagerRest {
         static ArrayList<BitbucketRepo> fromJson(String rawJson,BitbucketInstanceManagerRest parent ) {
 
 
-            GenericType type
+
+            Type type
             ArrayList result
 
             if (rawJson.startsWith("[")) {
-                type = new GenericType<ArrayList<BitbucketRepo>>() {}
+                type = TypeToken.getParameterized(ArrayList.class, BitbucketRepo.class).getType()
 
-                result =  getObjectMapper().readValue(rawJson, type) as ArrayList<BitbucketRepo>
+                result =  getObjectMapper().fromJson(rawJson, type) as ArrayList<BitbucketRepo>
             } else if (rawJson.startsWith("{")) {
-                type = new GenericType<BitbucketRepo>() {}
-                result =  [getObjectMapper().readValue(rawJson, type)] as ArrayList<BitbucketRepo>
+                type = TypeToken.get(BitbucketRepo).getType()
+                result =  [getObjectMapper().fromJson(rawJson, type)] as ArrayList<BitbucketRepo>
             } else {
                 throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
             }
@@ -746,21 +751,21 @@ class BitbucketInstanceManagerRest {
         static ArrayList<BitbucketProject> fromJson(String rawJson,BitbucketInstanceManagerRest parent ) {
 
 
-            GenericType type
+            Type type
             ArrayList result
 
             if (rawJson.startsWith("[")) {
-                type = new GenericType<ArrayList<BitbucketProject>>() {}
+                type = TypeToken.getParameterized(ArrayList.class, BitbucketProject.class).getType()
 
-                result =  getObjectMapper().readValue(rawJson, type) as ArrayList<BitbucketProject>
+                result =  getObjectMapper().fromJson(rawJson, type) as ArrayList<BitbucketProject>
             } else if (rawJson.startsWith("{")) {
-                type = new GenericType<BitbucketProject>() {}
-                result =  [getObjectMapper().readValue(rawJson, type)] as ArrayList<BitbucketProject>
+                type = TypeToken.get( BitbucketProject.class).getType()
+                result =  [getObjectMapper().fromJson(rawJson, type)] as ArrayList<BitbucketProject>
             } else {
                 throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
             }
 
-            result.each {it.unOrphan(parent)}
+            result.each {unOrphan(parent)}
             return result
 
         }

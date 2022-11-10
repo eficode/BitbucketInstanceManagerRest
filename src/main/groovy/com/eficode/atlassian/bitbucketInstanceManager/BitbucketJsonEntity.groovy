@@ -1,18 +1,22 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
+import com.google.gson.Gson
 import com.google.gson.internal.LinkedTreeMap
+import com.google.gson.reflect.TypeToken
 import groovy.json.JsonOutput
-import kong.unirest.JsonObjectMapper
+import kong.unirest.GenericType
 import kong.unirest.Unirest
 import kong.unirest.UnirestInstance
 
 import java.lang.reflect.Field
+import java.lang.reflect.Type
 
 
 trait BitbucketJsonEntity {
 
 
-    static JsonObjectMapper objectMapper = Unirest.config().getObjectMapper() as JsonObjectMapper
+
+    static Gson objectMapper = new Gson()
 
 
 
@@ -36,10 +40,13 @@ trait BitbucketJsonEntity {
 
 
 
-    void unOrphan(def parent) {
+
+
+    static void unOrphan(def parent) {
 
         Class clazz = this.getClass()
         Field thisField = clazz.declaredFields.find {it.name == "this\$0" }
+
 
 
 
