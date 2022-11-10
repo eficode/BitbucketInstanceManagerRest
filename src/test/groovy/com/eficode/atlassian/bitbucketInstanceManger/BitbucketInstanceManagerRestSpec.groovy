@@ -138,16 +138,18 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
         when:
-
         ArrayList<BitbucketCommit> allCommits = sampleRepo.getCommits()
 
+        ArrayList<BitbucketCommit> subsetCommits = sampleRepo.getCommits(allCommits[5].id, allCommits[0].id)
 
         then:
+        allCommits.size() >= 5
+        !subsetCommits.any {it == allCommits[5]}
+        allCommits.size() >= subsetCommits.size()
 
-        true
+
 
         cleanup:
-        true
         localGitRepoDir.deleteDir()
 
 

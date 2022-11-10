@@ -680,6 +680,12 @@ class BitbucketInstanceManagerRest {
         /** --- Repo history --- **/
 
 
+        /**
+         * Get Commits from repo
+         * @param fromId Get all commits starting from this commit (not inclusive)
+         * @param toId Get all commits until this commit
+         * @return An array of commit objects
+         */
         ArrayList<BitbucketCommit> getCommits(String fromId = "", String toId = "") {
 
 
@@ -688,7 +694,7 @@ class BitbucketInstanceManagerRest {
         }
 
         static ArrayList<BitbucketCommit> getCommits(UnirestInstance unirestInstance, BitbucketRepo repo, String fromId = "", String toId = "") {
-            //fromID is exclusive
+
 
             ArrayList<String> urlParameters = []
 
@@ -703,7 +709,7 @@ class BitbucketInstanceManagerRest {
 
 
             ArrayList<BitbucketCommit> bitbucketCommits = BitbucketCommit.fromJson(rawCommits.toString(), repo)
-            return bitbucketCommits
+            return bitbucketCommits.sort{it.authorTimeStamp}
 
 
         }
