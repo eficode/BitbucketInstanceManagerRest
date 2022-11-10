@@ -2,6 +2,7 @@ package com.eficode.atlassian.bitbucketInstanceManger
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo as BitbucketRepo
+import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketCommit as BitbucketCommit
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
 import com.eficode.devstack.container.impl.BitbucketContainer
 import kong.unirest.Unirest
@@ -112,10 +113,19 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     def "Test git actions"() {
 
         setup:
+        //bitbucketinstancemanagerrestspec
+        //SMP
+
         BitbucketInstanceManagerRest bb = setupBb()
+
+        //BitbucketProject sampleProject = bb.getProject("SMP")
+        BitbucketRepo sampleRepo = bb.getRepo("SMP", "bitbucketinstancemanagerrestspec")
+
+        /*
         bb.getProjects().each {
             bb.deleteProject(it, true)
         }
+
 
         BitbucketProject sampleProject = bb.createProject("Sample Project", "SMP")
         BitbucketRepo sampleRepo = bb.createRepo(sampleProject, BitbucketInstanceManagerRestSpec.simpleName)
@@ -129,8 +139,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         then: "Success should be returned"
         pushSuccess
 
+         */
+
         when:
-        bb.getCommits(sampleRepo)
+
+        ArrayList<BitbucketCommit> allCommits = sampleRepo.getCommits()
 
 
         then:
@@ -138,8 +151,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         true
 
         cleanup:
-
-        localGitRepoDir.deleteDir()
+        true
+        //localGitRepoDir.deleteDir()
 
 
     }

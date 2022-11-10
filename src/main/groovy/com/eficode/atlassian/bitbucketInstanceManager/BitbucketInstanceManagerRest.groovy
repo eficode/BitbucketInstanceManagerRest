@@ -1,6 +1,6 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
-
+import groovyjarjarantlr4.v4.runtime.atn.PredicateTransition
 import kong.unirest.Cookie
 import kong.unirest.Cookies
 import kong.unirest.GenericType
@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory
 import unirest.shaded.com.google.gson.JsonObject
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
+import java.lang.reflect.Field
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
@@ -51,13 +52,22 @@ class BitbucketInstanceManagerRest {
 
     /** --- Generic Helper Methods --- **/
 
-    UnirestInstance getNewUnirest(boolean withBasicAuth = true) {
+    String getAdminUsername() {
+        return this.adminPassword
+    }
+
+
+    UnirestInstance getNewUnirest() {
+        return getNewUnirest(this.baseUrl, this.adminUsername, this.adminPassword)
+    }
+
+    static UnirestInstance getNewUnirest(String url, String user, String password) {
 
         UnirestInstance unirest = Unirest.spawnInstance()
-        unirest.config().defaultBaseUrl(baseUrl)
+        unirest.config().defaultBaseUrl(url)
 
-        if (withBasicAuth) {
-            unirest.config().setDefaultBasicAuth(adminUsername, adminPassword)
+        if (user && password) {
+            unirest.config().setDefaultBasicAuth(user, password)
         }
 
         return unirest
@@ -110,8 +120,12 @@ class BitbucketInstanceManagerRest {
 
 
     ArrayList getJsonPages(String subPath, boolean returnValueOnly = true, int maxPages = 50) {
+        return getJsonPages(newUnirest, subPath, returnValueOnly, maxPages)
+    }
 
-        UnirestInstance unirest = newUnirest
+
+    static ArrayList getJsonPages(UnirestInstance unirest, String subPath, boolean returnValueOnly = true, int maxPages = 50) {
+
 
         int start = 0
         boolean isLastPage = false
@@ -133,7 +147,7 @@ class BitbucketInstanceManagerRest {
 
             isLastPage = response?.body?.object?.has("isLastPage") ? response?.body?.object?.get("isLastPage") as boolean : true
             //start = response?.body?.object?.has("nextPageStart") ? response?.body?.object?.get("nextPageStart") as int : -1
-            start = response?.body?.object?.has("nextPageStart") && response.body.object["nextPageStart"] != null  ? response.body.object["nextPageStart"] as int : -1
+            start = response?.body?.object?.has("nextPageStart") && response.body.object["nextPageStart"] != null ? response.body.object["nextPageStart"] as int : -1
 
             if (returnValueOnly) {
                 if (response.body.object.has("values")) {
@@ -161,7 +175,7 @@ class BitbucketInstanceManagerRest {
     boolean setApplicationProperties(String bbLicense, String appTitle = "Bitbucket", String baseUrl = this.baseUrl) {
         log.info("Setting up initial application properties")
 
-        UnirestInstance unirestInstance = getNewUnirest(false)
+        UnirestInstance unirestInstance = getNewUnirest(this.baseUrl, null, null)
 
         unirestInstance.config().socketTimeout(1000)
 
@@ -190,7 +204,7 @@ class BitbucketInstanceManagerRest {
 
 
         unirestInstance.shutDown()
-        unirestInstance = getNewUnirest(false)
+        unirestInstance = getNewUnirest(this.baseUrl, null, null)
         Cookies cookies = unirestInstance.get("/setup").asString().cookies
         assert cookies.find { it.name == "BITBUCKETSESSIONID" }
         HttpResponse bodyString = unirestInstance.get("/setup").cookie(cookies).asString()
@@ -266,7 +280,7 @@ class BitbucketInstanceManagerRest {
 
 
     BitbucketProject getProject(String projectKey) {
-        ArrayList<JsonNode> rawProject = getJsonPages("/rest/api/1.0/projects/" + projectKey, false) as ArrayList<JsonNode>
+        ArrayList<JsonNode> rawProject = getJsonPages(("/rest/api/1.0/projects/" + projectKey) as String, false) as ArrayList<JsonNode>
 
 
         if (rawProject.toString().contains("Project $projectKey does not exist")) {
@@ -388,6 +402,24 @@ class BitbucketInstanceManagerRest {
     BitbucketRepo getRepo(String projectKey, String repoNameOrSlug) {
         ArrayList<BitbucketRepo> projectRepos = getRepos(projectKey)
 
+        /*
+        log.info("THIS:" + this.baseUrl)
+
+        BitbucketRepo repo = new BitbucketRepo()
+        repo.with { dest ->
+            dest.name = projectRepos.first().name
+
+        }
+
+
+        repo = unOrphan(projectRepos.first())
+
+         */
+
+        projectRepos.first().unOrphan(this)
+        projectRepos.first().getCommits()
+
+
         return projectRepos.find { it.name == repoNameOrSlug || it.slug == repoNameOrSlug }
 
     }
@@ -445,28 +477,6 @@ class BitbucketInstanceManagerRest {
     boolean deleteRepo(BitbucketRepo bitbucketRepo) {
 
         return deleteRepos([bitbucketRepo])
-    }
-
-
-    /** --- Repo history --- **/
-
-    def getCommits(BitbucketRepo repo, String fromId = "", String toId = "") {
-        //fromID is exclusive
-
-        ArrayList<String> urlParameters = []
-
-        fromId ? urlParameters.add("since=$fromId") : null
-        toId ? urlParameters.add("until=$toId") : null
-
-        String url = "/rest/api/latest/projects/${repo.project.key}/repos/${repo.slug}/commits"
-
-        urlParameters ? (url += "?" + urlParameters.join("&")) : null
-
-        ArrayList rawCommits = getJsonPages(url)
-
-        return rawCommits
-
-
     }
 
 
@@ -559,6 +569,49 @@ class BitbucketInstanceManagerRest {
     }
 
 
+    /*
+    BitbucketJsonEntity unOrphan(BitbucketJsonEntity src) {
+
+        BitbucketJsonEntity destination = src.class.getConstructor(BitbucketInstanceManagerRest).newInstance(this)
+        Field thisField = src.class.declaredFields.find {it.name == "this\$0" }
+        thisField.setAccessible(true)
+        log.info("Parent:" + thisField.get(src))
+        src.unOrphan(this)
+
+        log.info("Parent after:" + thisField.get(src))
+        Class clazz = src.getClass()
+
+        ArrayList<Field> allFields = clazz.declaredFields
+
+        ArrayList<Field> validFields = clazz.declaredFields.findAll { !it.name.contains("\$") && it.name != "metaClass" }
+
+        Field thisField = allFields.find {it.name == "this\$0"}
+
+
+        thisField.set(src, this)
+
+        return src
+
+
+        validFields.each { field->
+
+
+            log.info("Setting:" + field.name)
+            field.setAccessible(true)
+            field.set(destination, field.get(src))
+        }
+
+
+
+
+
+
+
+        return destination
+    }
+
+    */
+
     /**
      * Not finished
 
@@ -574,23 +627,76 @@ class BitbucketInstanceManagerRest {
      */
 
 
+    class BitbucketCommit implements BitbucketJsonEntity {
+
+        String id
+        String displayId
+        CommitUser author
+        String authorTimeStamp
+        CommitUser committer
+        String committerTimestamp
+        String message
+        ArrayList<String> parentId
+
+
+        class CommitUser {
+            String name
+            String emailAddress
+        }
+
+
+        boolean isValid() {
+
+            return id && displayId && message
+
+        }
+
+        String toString() {
+
+            return displayId + " - " + message
+        }
+
+
+        static ArrayList<BitbucketCommit> fromJson(String rawJson) {
+
+
+            GenericType type
+
+            if (rawJson.startsWith("[")) {
+                type = new GenericType<ArrayList<BitbucketCommit>>() {}
+
+                return getObjectMapper().readValue(rawJson, type) as ArrayList<BitbucketCommit>
+            } else if (rawJson.startsWith("{")) {
+                type = new GenericType<BitbucketCommit>() {}
+                return [getObjectMapper().readValue(rawJson, type)] as ArrayList<BitbucketCommit>
+            } else {
+                throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
+            }
+
+
+        }
+
+
+    }
+
+
     class BitbucketRepo implements BitbucketJsonEntity {
 
 
-        String slug
-        String id
-        String name
-        String hierarchyId
-        String scmId
-        String state
-        String statusMessage
-        boolean forkable
-        BitbucketProject project
+        public String slug
+        public String id
+        public String name
+        public String hierarchyId
+        public String scmId
+        public String state
+        public String statusMessage
+        public boolean forkable
+        public BitbucketProject project
 
         @SerializedName("public")
-        boolean isPublic
-        boolean archived
-        Map<String, ArrayList> links = ["clone": [[:]], "self": [[:]]]
+        public boolean isPublic
+        public boolean archived
+        public Map<String, ArrayList> links = ["clone": [[:]], "self": [[:]]]
 
 
         boolean isValid() {
@@ -624,6 +730,42 @@ class BitbucketInstanceManagerRest {
             } else {
                 throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
             }
+
+
+        }
+
+
+        /** --- Repo history --- **/
+
+
+        ArrayList<BitbucketCommit> getCommits(String fromId = "", String toId = "") {
+            BitbucketRepo repo = this
+
+            log.info("ADMIN:" + adminUsername)
+
+
+            def test = adminUsername + adminPassword + baseUrl
+            UnirestInstance instance = getNewUnirest()
+            return BitbucketRepo.getCommits(instance, repo, fromId, toId)
+        }
+
+        static ArrayList<BitbucketCommit> getCommits(UnirestInstance unirestInstance, BitbucketRepo repo, String fromId = "", String toId = "") {
+            //fromID is exclusive
+
+            ArrayList<String> urlParameters = []
+
+            fromId ? urlParameters.add("since=$fromId") : null
+            toId ? urlParameters.add("until=$toId") : null
+
+            String url = "/rest/api/latest/projects/${repo.project.key}/repos/${repo.slug}/commits"
+
+            urlParameters ? (url += "?" + urlParameters.join("&")) : null
+
+            ArrayList rawCommits = getJsonPages(unirestInstance, url)
+
+            //ArrayList<BitbucketCommit> bitbucketCommits = BitbucketCommit.fromJson(rawCommits.toString())
+            //return bitbucketCommits
+            return []
 
 
         }
