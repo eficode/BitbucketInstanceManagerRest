@@ -11,34 +11,35 @@ import java.lang.reflect.Field
 trait BitbucketJsonEntity {
 
 
-    //UnirestInstance unirest
-    //abstract static JsonObjectMapper objectMapper //= Unirest.config().getObjectMapper() as JsonObjectMapper
     static JsonObjectMapper objectMapper = Unirest.config().getObjectMapper() as JsonObjectMapper
-
-    //abstract ArrayList<BitbucketJsonEntity> fromJson(ArrayList<Map> rawJson, UnirestInstance unirest)
-
-    //abstract ArrayList<BitbucketJsonEntity> fromJson(Map rawJson, UnirestInstance unirest)
 
 
 
     //An array of maps
-    static ArrayList<BitbucketJsonEntity> fromJson(ArrayList<Map> rawJson) {
+    static ArrayList<BitbucketJsonEntity> fromJson(ArrayList<Map> rawJson, BitbucketInstanceManagerRest parent) {
 
-        return fromJson(JsonOutput.toJson(rawJson))
+        return fromJson(JsonOutput.toJson(rawJson), parent)
     }
     //A single map
-    static ArrayList<BitbucketJsonEntity> fromJson(Map rawJson) {
+    static ArrayList<BitbucketJsonEntity> fromJson(Map rawJson, BitbucketInstanceManagerRest parent) {
 
 
-        return fromJson(JsonOutput.toJson(rawJson))
+        return fromJson(JsonOutput.toJson(rawJson), parent)
     }
 
 
+    abstract static ArrayList<BitbucketJsonEntity> fromJson(String rawJson, BitbucketInstanceManagerRest parent)
 
-    void unOrphan(BitbucketInstanceManagerRest parent) {
+
+
+
+    void unOrphan(def parent) {
 
         Class clazz = this.getClass()
         Field thisField = clazz.declaredFields.find {it.name == "this\$0" }
+
+
+
         thisField.setAccessible(true)
         thisField.set(this, parent)
         thisField.setAccessible(false)
@@ -48,8 +49,6 @@ trait BitbucketJsonEntity {
 
 
 
-
-    abstract static ArrayList<BitbucketJsonEntity> fromJson(String rawJson)
 
     abstract boolean isValid()
 
