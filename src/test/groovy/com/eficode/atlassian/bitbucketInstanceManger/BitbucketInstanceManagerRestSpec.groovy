@@ -12,6 +12,7 @@ import org.apache.commons.io.filefilter.TrueFileFilter
 import org.eclipse.jgit.api.Git
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import spock.lang.Ignore
 import spock.lang.Shared
 import spock.lang.Specification
 
@@ -97,6 +98,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         return tempDir
     }
 
+    @Ignore
     def testSetupOfBase() {
 
         setup:
@@ -113,15 +115,10 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     def "Test git actions"() {
 
         setup:
-        //bitbucketinstancemanagerrestspec
-        //SMP
 
         BitbucketInstanceManagerRest bb = setupBb()
 
-        //BitbucketProject sampleProject = bb.getProject("SMP")
-        BitbucketRepo sampleRepo = bb.getRepo("SMP", "bitbucketinstancemanagerrestspec")
 
-        /*
         bb.getProjects().each {
             bb.deleteProject(it, true)
         }
@@ -139,7 +136,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         then: "Success should be returned"
         pushSuccess
 
-         */
 
         when:
 
@@ -152,7 +148,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         cleanup:
         true
-        //localGitRepoDir.deleteDir()
+        localGitRepoDir.deleteDir()
 
 
     }
@@ -254,8 +250,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         assert projectsRaw instanceof ArrayList
         assert projectsRaw.first() instanceof Map
 
-        BitbucketProject.fromJson(projectsRaw).id == projectsRaw.collect { BitbucketProject.fromJson(it) }.id.flatten() //Verify Converting singel project and list of projects return the same value
-        bb.getProjects().key.containsAll(BitbucketProject.fromJson(projectsRaw).key)
+        BitbucketProject.fromJson(projectsRaw, bb).id == projectsRaw.collect { BitbucketProject.fromJson(it, bb) }.id.flatten() //Verify Converting singel project and list of projects return the same value
+        bb.getProjects().key.containsAll(BitbucketProject.fromJson(projectsRaw, bb).key)
         bb.getProject(projectsRaw.first().key as String).id.toLong() == projectsRaw.first().id
         bb.getProjects().key.containsAll(projectsRaw.key)
 

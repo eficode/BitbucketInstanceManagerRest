@@ -51,13 +51,7 @@ class BitbucketInstanceManagerRest {
 
 
     /** --- Generic Helper Methods --- **/
-
-    String getAdminUsername() {
-        return this.adminPassword
-    }
-
-
-    UnirestInstance getNewUnirest() {
+        UnirestInstance getNewUnirest() {
         return getNewUnirest(this.baseUrl, this.adminUsername, this.adminPassword)
     }
 
@@ -280,7 +274,7 @@ class BitbucketInstanceManagerRest {
 
 
     BitbucketProject getProject(String projectKey) {
-        ArrayList<JsonNode> rawProject = getJsonPages(("/rest/api/1.0/projects/" + projectKey) as String, false) as ArrayList<JsonNode>
+        ArrayList<JsonNode> rawProject = getJsonPages("/rest/api/1.0/projects/$projectKey" as String, false) as ArrayList<JsonNode>
 
 
         if (rawProject.toString().contains("Project $projectKey does not exist")) {

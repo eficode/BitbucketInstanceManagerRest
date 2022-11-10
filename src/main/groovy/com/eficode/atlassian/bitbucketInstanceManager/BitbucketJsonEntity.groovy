@@ -8,10 +8,13 @@ import kong.unirest.UnirestInstance
 
 import java.lang.reflect.Field
 
+
 trait BitbucketJsonEntity {
 
 
     static JsonObjectMapper objectMapper = Unirest.config().getObjectMapper() as JsonObjectMapper
+
+
 
 
 
