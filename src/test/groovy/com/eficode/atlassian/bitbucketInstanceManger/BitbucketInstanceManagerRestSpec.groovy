@@ -127,7 +127,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketProject sampleProject = bb.createProject("Sample Project", "SMP")
         BitbucketRepo sampleRepo = bb.createRepo(sampleProject, BitbucketInstanceManagerRestSpec.simpleName)
 
-
         when: "When pushing the project git repo, to the new bitbucket project/repo"
         File localGitRepoDir = setupLocalGitRepo()
         boolean pushSuccess = bb.pushToRepo(localGitRepoDir, sampleRepo, true)
@@ -139,17 +138,18 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         sampleRepo instanceof BitbucketRepo
 
 
-        when:
+        when: "Getting all repo commits, and a subset of the commits"
         ArrayList<BitbucketCommit> allCommits = sampleRepo.getCommits()
 
         ArrayList<BitbucketCommit> subsetCommits = sampleRepo.getCommits(allCommits[5].id, allCommits[0].id)
 
-        then:
-        allCommits.size() >= 5
+        then: "All commits should be more than subset, they should all be BitbucketCommit, the subset should not contain"
+        allCommits.size() >= subsetCommits.size()
         allCommits.every {it instanceof BitbucketCommit}
         !subsetCommits.any {it == allCommits[5]}
-        allCommits.size() >= subsetCommits.size()
-
+        allCommits.every{it.isValid()}
+        sampleProject.isValid()
+        sampleRepo.isValid()
 
 
         cleanup:

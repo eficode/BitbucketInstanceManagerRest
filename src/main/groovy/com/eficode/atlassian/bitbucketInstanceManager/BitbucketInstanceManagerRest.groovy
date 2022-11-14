@@ -270,7 +270,8 @@ class BitbucketInstanceManagerRest {
 
 
         ArrayList rawProjects = getJsonPages("/rest/api/latest/projects", true)
-        return BitbucketProject.fromJson(rawProjects.toString(), this)
+        ArrayList<BitbucketProject> projects = BitbucketProject.fromJson(rawProjects.toString(), BitbucketProject, this)
+        return projects
 
     }
 
@@ -285,7 +286,7 @@ class BitbucketInstanceManagerRest {
 
         assert rawProject.size() == 1: "Error getting project with key:" + projectKey
 
-        return BitbucketProject.fromJson(rawProject.first().toString(), this).find { it.valid }
+        return BitbucketProject.fromJson(rawProject.first().toString(), BitbucketProject, this).find { it.valid } as BitbucketProject
     }
 
     boolean deleteProject(BitbucketProject project, boolean deleteRepos = false) {
@@ -406,7 +407,7 @@ class BitbucketInstanceManagerRest {
         ArrayList<JsonObject> rawRepos = getJsonPages("/rest/api/1.0/projects/${projectKey}/repos") as ArrayList<JsonNode>
 
 
-        ArrayList<BitbucketRepo> repos = BitbucketRepo.fromJson(rawRepos.toString(), this)
+        ArrayList<BitbucketRepo> repos = BitbucketRepo.fromJson(rawRepos.toString(), BitbucketRepo, this)
 
         return repos
     }
@@ -442,7 +443,7 @@ class BitbucketInstanceManagerRest {
 
         UnirestInstance unirest = newUnirest
         repos.each { bitbucketRepo ->
-            assert bitbucketRepo.valid: "Error deleting bitbucket repo, was supplied an invalid repo object:" + bitbucketRepo.toString()
+            assert bitbucketRepo instanceof BitbucketRepo && bitbucketRepo.isValid() : "Error deleting bitbucket repo, was supplied an invalid repo object:" + bitbucketRepo.toString()
 
             HttpResponse response = unirest.delete("/rest/api/latest/projects/${bitbucketRepo.project.key}/repos/${bitbucketRepo.slug}").asEmpty()
 
@@ -582,7 +583,7 @@ class BitbucketInstanceManagerRest {
 
         boolean isValid() {
 
-            return id && displayId && message
+            return id && displayId && message && parentObject instanceof BitbucketInstanceManagerRest
 
         }
 
@@ -593,11 +594,13 @@ class BitbucketInstanceManagerRest {
 
 
 
+        /*
+
         static ArrayList<BitbucketCommit> fromJson(String rawJson, BitbucketRepo parent) {
 
 
             Type type
-            ArrayList result
+            ArrayList<BitbucketCommit> result
 
             if (rawJson.startsWith("[")) {
 
@@ -612,8 +615,15 @@ class BitbucketInstanceManagerRest {
             }
 
             //Static, has no parent
-            //result.each {it.unOrphan(parent)}
+
             return result
+
+
+        }*/
+
+
+        ArrayList getChanges() {
+
 
 
         }
@@ -641,9 +651,11 @@ class BitbucketInstanceManagerRest {
         public Map<String, ArrayList> links = ["clone": [[:]], "self": [[:]]]
 
 
+        @Override
         boolean isValid() {
 
-            return slug && id && name && hierarchyId && project?.isValid()
+            return slug && id && name && hierarchyId && project?.isValid() && parentObject instanceof BitbucketInstanceManagerRest
+
 
         }
 
@@ -658,28 +670,7 @@ class BitbucketInstanceManagerRest {
 
 
 
-        static ArrayList<BitbucketRepo> fromJson(String rawJson,BitbucketInstanceManagerRest parent ) {
 
-
-
-            Type type
-            ArrayList result
-
-            if (rawJson.startsWith("[")) {
-                type = TypeToken.getParameterized(ArrayList.class, BitbucketRepo.class).getType()
-
-                result =  getObjectMapper().fromJson(rawJson, type) as ArrayList<BitbucketRepo>
-            } else if (rawJson.startsWith("{")) {
-                type = TypeToken.get(BitbucketRepo).getType()
-                result =  [getObjectMapper().fromJson(rawJson, type)] as ArrayList<BitbucketRepo>
-            } else {
-                throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
-            }
-
-            result.each {it.unOrphan(parent)}
-            return result
-
-        }
 
 
         /** --- Repo history --- **/
@@ -695,25 +686,21 @@ class BitbucketInstanceManagerRest {
 
 
             UnirestInstance instance = getNewUnirest()
-            return getCommits(instance, this, fromId, toId)
-        }
-
-        static ArrayList<BitbucketCommit> getCommits(UnirestInstance unirestInstance, BitbucketRepo repo, String fromId = "", String toId = "") {
-
 
             ArrayList<String> urlParameters = []
 
             fromId ? urlParameters.add("since=$fromId") : null
             toId ? urlParameters.add("until=$toId") : null
 
-            String url = "/rest/api/latest/projects/${repo.project.key}/repos/${repo.slug}/commits"
+            String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/commits"
 
             urlParameters ? (url += "?" + urlParameters.join("&")) : null
 
-            ArrayList rawCommits = getJsonPages(unirestInstance, url)
+            ArrayList rawCommits = getJsonPages(instance, url)
 
 
-            ArrayList<BitbucketCommit> bitbucketCommits = BitbucketCommit.fromJson(rawCommits.toString(), repo)
+
+            ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, parentObject)
             return bitbucketCommits.sort{it.authorTimeStamp}
 
 
@@ -743,32 +730,11 @@ class BitbucketInstanceManagerRest {
 
         boolean isValid() {
 
-            return key && id && name && type
+            return key && id && name && type && parentObject instanceof BitbucketInstanceManagerRest
 
         }
 
 
-        static ArrayList<BitbucketProject> fromJson(String rawJson,BitbucketInstanceManagerRest parent ) {
-
-
-            Type type
-            ArrayList result
-
-            if (rawJson.startsWith("[")) {
-                type = TypeToken.getParameterized(ArrayList.class, BitbucketProject.class).getType()
-
-                result =  getObjectMapper().fromJson(rawJson, type) as ArrayList<BitbucketProject>
-            } else if (rawJson.startsWith("{")) {
-                type = TypeToken.get( BitbucketProject.class).getType()
-                result =  [getObjectMapper().fromJson(rawJson, type)] as ArrayList<BitbucketProject>
-            } else {
-                throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
-            }
-
-            result.each {unOrphan(parent)}
-            return result
-
-        }
 
 
     }
