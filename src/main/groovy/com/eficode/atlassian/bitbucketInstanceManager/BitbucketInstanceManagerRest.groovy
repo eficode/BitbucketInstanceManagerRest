@@ -1,34 +1,24 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
 
-import com.google.gson.reflect.TypeToken
-import groovyjarjarantlr4.v4.runtime.atn.PredicateTransition
 import kong.unirest.Cookie
 import kong.unirest.Cookies
-import kong.unirest.GenericType
-import kong.unirest.GetRequest
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
-import kong.unirest.JsonObjectMapper
 import kong.unirest.Unirest
 import kong.unirest.UnirestException
 import kong.unirest.UnirestInstance
 import kong.unirest.json.JSONArray
-import org.codehaus.groovy.runtime.StringBufferWriter
 import org.eclipse.jgit.api.CloneCommand
 import org.eclipse.jgit.api.CommitCommand
 import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.api.PushCommand
 import org.eclipse.jgit.api.TransportCommand
-import org.eclipse.jgit.lib.Ref
-import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.lib.StoredConfig
 import org.eclipse.jgit.lib.TextProgressMonitor
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.transport.PushResult
 import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.RemoteConfig
-import org.eclipse.jgit.transport.SideBandProgressMonitor
 import org.eclipse.jgit.transport.URIish
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.slf4j.Logger
@@ -37,8 +27,6 @@ import org.slf4j.event.Level
 import unirest.shaded.com.google.gson.JsonObject
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
-import java.lang.reflect.Field
-import java.lang.reflect.Type
 import java.nio.charset.StandardCharsets
 import java.text.DateFormat
 import java.text.SimpleDateFormat
@@ -126,18 +114,17 @@ class BitbucketInstanceManagerRest {
     }
 
 
-    ArrayList getJsonPages(String subPath, boolean returnValueOnly = true, int maxPages = 50) {
-        return getJsonPages(newUnirest, subPath, returnValueOnly, maxPages)
+    ArrayList getJsonPages(String subPath, long maxPages, boolean returnValueOnly = true) {
+
+        return getJsonPages(newUnirest, subPath, maxPages, returnValueOnly)
     }
 
 
-    //TODO maxPages should perhaps be mandatory
-    static ArrayList getJsonPages(UnirestInstance unirest, String subPath, boolean returnValueOnly = true, int maxPages = 10) {
+    static ArrayList getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, boolean returnValueOnly = true) {
 
 
         int start = 0
         boolean isLastPage = false
-        int page = 1
 
         ArrayList responses = []
 
@@ -146,11 +133,14 @@ class BitbucketInstanceManagerRest {
 
             //Extra loop protection
 
-            if (page > maxPages) {
-                throw new Exception("Returned more than expected pages (${page}) when querying:" + subPath)
+
+            if (maxResponses != 0 && responses.size() > maxResponses) {
+                log.warn("Returned more than expected responses (${responses.size()}) when querying:" + subPath)
+                responses = responses[0..maxResponses-1]
+                break
             }
 
-            page++
+
 
             HttpResponse<JsonNode> response = unirest.get(subPath).accept("application/json").queryString("start", start).asJson()
 
@@ -280,10 +270,10 @@ class BitbucketInstanceManagerRest {
 
     /** --- Project CRUD --- **/
 
-    ArrayList<BitbucketProject> getProjects() {
+    ArrayList<BitbucketProject> getProjects(long maxProjects = 25) {
 
 
-        ArrayList rawProjects = getJsonPages("/rest/api/latest/projects", true)
+        ArrayList rawProjects = getJsonPages("/rest/api/latest/projects", maxProjects)
         ArrayList<BitbucketProject> projects = BitbucketProject.fromJson(rawProjects.toString(), BitbucketProject, this)
         return projects
 
@@ -291,7 +281,7 @@ class BitbucketInstanceManagerRest {
 
 
     BitbucketProject getProject(String projectKey) {
-        ArrayList<JsonNode> rawProject = getJsonPages("/rest/api/1.0/projects/$projectKey" as String, false) as ArrayList<JsonNode>
+        ArrayList<JsonNode> rawProject = getJsonPages("/rest/api/1.0/projects/$projectKey" as String, 1, false) as ArrayList<JsonNode>
 
 
         if (rawProject.toString().contains("Project $projectKey does not exist")) {
@@ -420,8 +410,8 @@ class BitbucketInstanceManagerRest {
 
     }
 
-    ArrayList<BitbucketRepo> getRepos(String projectKey) {
-        ArrayList<JsonObject> rawRepos = getJsonPages("/rest/api/1.0/projects/${projectKey}/repos") as ArrayList<JsonNode>
+    ArrayList<BitbucketRepo> getRepos(String projectKey, long maxRepos = 50) {
+        ArrayList<JsonObject> rawRepos = getJsonPages("/rest/api/1.0/projects/${projectKey}/repos", maxRepos) as ArrayList<JsonNode>
 
 
         ArrayList<BitbucketRepo> repos = BitbucketRepo.fromJson(rawRepos.toString(), BitbucketRepo, this)
@@ -781,12 +771,12 @@ class BitbucketInstanceManagerRest {
         }
 
 
-        ArrayList<BitbucketChange> getChanges() {
-            return getChanges(repository.project.key, repository.slug, id)
+        ArrayList<BitbucketChange> getChanges(long maxChanges = 150) {
+            return getChanges(repository.project.key, repository.slug, id, maxChanges)
         }
 
 
-        ArrayList<BitbucketChange> getChanges(String projectKey, String repoSlug, String commitId) {
+        ArrayList<BitbucketChange> getChanges(String projectKey, String repoSlug, String commitId, long maxChanges) {
 
 
             log.info("Getting changes for commit:")
@@ -795,11 +785,11 @@ class BitbucketInstanceManagerRest {
             log.info("\tCommit:" + commitId)
 
 
-            ArrayList<BitbucketChange> result = fromJson(getRawChanges(newUnirest, projectKey, repoSlug, commitId).toString(), BitbucketChange, parentObject) as ArrayList<BitbucketChange>
+            ArrayList<BitbucketChange> result = fromJson(getRawChanges(newUnirest, projectKey, repoSlug, commitId, maxChanges).toString(), BitbucketChange, parentObject) as ArrayList<BitbucketChange>
 
             if (result.isEmpty() && this.isAMerge()) {
                 log.info("\tCommit has no changes but have been confirmed to be a Merge-commit, fetching changes performed by merge")
-                result = fromJson(getRawChanges(newUnirest, projectKey, repoSlug, commitId, parents.first().id as String).toString(), BitbucketChange, parentObject) as ArrayList<BitbucketChange>
+                result = fromJson(getRawChanges(newUnirest, projectKey, repoSlug, commitId, maxChanges, parents.first().id as String).toString(), BitbucketChange, parentObject) as ArrayList<BitbucketChange>
             }
 
             result.each { it.commit = this }
@@ -809,13 +799,13 @@ class BitbucketInstanceManagerRest {
         }
 
 
-        static ArrayList getRawChanges(UnirestInstance instance, String projectKey, String repoSlug, String commitId, String since = null) {
+        static ArrayList getRawChanges(UnirestInstance instance, String projectKey, String repoSlug, String commitId, long maxChanges, String since = null ) {
 
             String url = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/commits/$commitId/changes"
 
             since ? url += "?since=$since"  : ""
 
-            return getJsonPages(instance, url)
+            return getJsonPages(instance, url, maxChanges)
 
         }
 
@@ -832,7 +822,7 @@ class BitbucketInstanceManagerRest {
 
             String url = "/rest/branch-utils/latest/projects/${repository.project.key}/repos/${repository.slug}/branches/info/${displayId}"
 
-            ArrayList<Map> branches = getJsonPages(newUnirest, url)
+            ArrayList<Map> branches = getJsonPages(newUnirest, url, 1)
             assert branches.size() == 1: "Error finding branch for Commit ${displayId}, API returned ${branches.size()} branches"
 
             return branches.first() as Map
@@ -885,7 +875,7 @@ class BitbucketInstanceManagerRest {
          * @param toId Get all commits until this commit
          * @return An array of commit objects
          */
-        ArrayList<BitbucketCommit> getCommits(String fromId = "", String toId = "") {
+        ArrayList<BitbucketCommit> getCommits(String fromId = "", String toId = "", long maxCommits) {
 
 
             UnirestInstance instance = getNewUnirest()
@@ -899,7 +889,7 @@ class BitbucketInstanceManagerRest {
 
             urlParameters ? (url += "?" + urlParameters.join("&")) : null
 
-            ArrayList rawCommits = getJsonPages(instance, url)
+            ArrayList rawCommits = getJsonPages(instance, url, maxCommits, true)
 
 
             ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, parentObject)
@@ -914,7 +904,7 @@ class BitbucketInstanceManagerRest {
             String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/commits/" + commitId
 
             UnirestInstance instance = getNewUnirest()
-            ArrayList rawCommits = getJsonPages(instance, url, false)
+            ArrayList rawCommits = getJsonPages(instance, url, 1, false )
 
             assert rawCommits.size() == 1 : "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
 

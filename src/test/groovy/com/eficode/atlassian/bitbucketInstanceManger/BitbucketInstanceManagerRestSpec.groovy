@@ -140,7 +140,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
 
-        ArrayList<BitbucketCommit> commits = sampleRepo.getCommits()
+        ArrayList<BitbucketCommit> commits = sampleRepo.getCommits(100)
 
         //ArrayList<Map> branches = commits.collect {[id: it.displayId, "branches" : it.branches]}
         ArrayList<String> changesMd = commits.collect { it.collect {it.toMarkdown()} }.flatten()
