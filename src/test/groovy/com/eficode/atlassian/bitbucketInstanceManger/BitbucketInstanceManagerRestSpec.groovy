@@ -4,6 +4,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo as BitbucketRepo
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketCommit as BitbucketCommit
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
+import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketChange as BitbucketChange
 import com.eficode.devstack.container.impl.BitbucketContainer
 import kong.unirest.Unirest
 import kong.unirest.UnirestInstance
@@ -112,6 +113,100 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
     }
 
+    def "Test markdown generation"() {
+
+        setup:
+        BitbucketInstanceManagerRest bb = setupBb()
+
+
+        /*
+        bb.getProjects().each {
+            bb.deleteProject(it, true)
+        }
+        BitbucketProject sampleProject = bb.createProject("Sample Project", "SMP")
+        BitbucketRepo sampleRepo = bb.createRepo(sampleProject, BitbucketInstanceManagerRestSpec.simpleName)
+
+        File localGitRepoDir = setupLocalGitRepo()
+        assert bb.pushToRepo(localGitRepoDir, sampleRepo, true)
+
+
+         */
+
+
+
+
+        File localGitRepoDir = new File("/Users/anders/Downloads/RepoTemp2")
+        BitbucketRepo sampleRepo = bb.getRepo("SMP", "VSCODE")
+
+
+
+        ArrayList<BitbucketCommit> commits = sampleRepo.getCommits()
+
+        //ArrayList<Map> branches = commits.collect {[id: it.displayId, "branches" : it.branches]}
+        ArrayList<String> changesMd = commits.collect { it.collect {it.toMarkdown()} }.flatten()
+
+        //File targetDir = new File("target").getAbsoluteFile()
+        //targetDir.mkdir()
+
+
+        when:
+
+        File mDFile = new File(localGitRepoDir, "changes.md")
+        mDFile.createNewFile()
+        mDFile.text = changesMd.join("\n\n---\n\n\n") //BitbucketChange.markdownHeader + changesMd.take(5).join("\n") + BitbucketChange.markdownFooter
+        bb.addAndCommit(localGitRepoDir, "Testing Markdown", mDFile.name, "Spock", "spock@starship.enterprise")
+        bb.pushToRepo(localGitRepoDir, sampleRepo)
+
+
+
+
+        then:
+        true
+
+
+
+    }
+
+    def "Test getFileNameTruncated"(String full, String parent, String name) {
+
+        setup:
+        BitbucketInstanceManagerRest bb = setupBb()
+
+        ArrayList<Integer> lengths = [36, 5, 10, 32, 33, 34, 35, 36, 37, 38, 39, 40, 62, 98, 500]
+
+        BitbucketChange change = new BitbucketChange(bb)
+        change.path = [
+                toString: full,
+                parent  : parent,
+                name    : name
+        ]
+
+        log.info("Testing truncation of file names")
+        log.info("\tFileName:" + full)
+        expect:
+
+        assert lengths.every { expectedLen ->
+
+            log.info("\tTo length:" + expectedLen)
+            String truncatedOut = change.getFileNameTruncated(expectedLen)
+            log.info("\t\tOutput was: " + truncatedOut)
+            log.info("\t\tOutput length: " + truncatedOut.length())
+
+            if (expectedLen > full.length()) {
+                return truncatedOut.length() == full.length()
+            }
+            return truncatedOut.length() == expectedLen
+
+        }
+
+
+        where:
+        full                                                                                                 | parent                                                           | name
+        "src/main/groovy/com/eficode/atlassian/bitbucketInstanceManager/BitbucketInstanceManagerRest.groovy" | "src/main/groovy/com/eficode/atlassian/bitbucketInstanceManager" | "BitbucketInstanceManagerRest.groovy"
+
+
+    }
+
     def "Test git actions"() {
 
         setup:
@@ -145,11 +240,19 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then: "All commits should be more than subset, they should all be BitbucketCommit, the subset should not contain"
         allCommits.size() >= subsetCommits.size()
-        allCommits.every {it instanceof BitbucketCommit}
-        !subsetCommits.any {it == allCommits[5]}
-        allCommits.every{it.isValid()}
+        allCommits.every { it instanceof BitbucketCommit }
+        !subsetCommits.any { it == allCommits[5] }
+        allCommits.every { it.isValid() }
         sampleProject.isValid()
         sampleRepo.isValid()
+
+
+        when: "Get changes from commit"
+        ArrayList<BitbucketChange> changes = allCommits.last().getChanges()
+
+        then:
+        String changesMd = changes.collect { it.toMarkdown() }.join("\n")
+        true
 
 
         cleanup:

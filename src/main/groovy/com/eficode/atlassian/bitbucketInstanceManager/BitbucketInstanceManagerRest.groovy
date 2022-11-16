@@ -1,5 +1,6 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
+
 import com.google.gson.reflect.TypeToken
 import groovyjarjarantlr4.v4.runtime.atn.PredicateTransition
 import kong.unirest.Cookie
@@ -13,31 +14,41 @@ import kong.unirest.Unirest
 import kong.unirest.UnirestException
 import kong.unirest.UnirestInstance
 import kong.unirest.json.JSONArray
+import org.codehaus.groovy.runtime.StringBufferWriter
+import org.eclipse.jgit.api.CloneCommand
+import org.eclipse.jgit.api.CommitCommand
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.PushCommand
 import org.eclipse.jgit.api.TransportCommand
 import org.eclipse.jgit.lib.Ref
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.lib.StoredConfig
+import org.eclipse.jgit.lib.TextProgressMonitor
+import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.transport.PushResult
 import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.RemoteConfig
+import org.eclipse.jgit.transport.SideBandProgressMonitor
 import org.eclipse.jgit.transport.URIish
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.slf4j.event.Level
 import unirest.shaded.com.google.gson.JsonObject
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
 import java.lang.reflect.Field
 import java.lang.reflect.Type
+import java.nio.charset.StandardCharsets
+import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
 
 class BitbucketInstanceManagerRest {
 
-    Logger log = LoggerFactory.getLogger(BitbucketInstanceManagerRest.class)
+    static Logger log = LoggerFactory.getLogger(BitbucketInstanceManagerRest.class)
     String adminUsername
     String adminPassword
     //JsonObjectMapper objectMapper
@@ -53,7 +64,7 @@ class BitbucketInstanceManagerRest {
 
 
     /** --- Generic Helper Methods --- **/
-        UnirestInstance getNewUnirest() {
+    UnirestInstance getNewUnirest() {
         return getNewUnirest(this.baseUrl, this.adminUsername, this.adminPassword)
     }
 
@@ -120,7 +131,8 @@ class BitbucketInstanceManagerRest {
     }
 
 
-    static ArrayList getJsonPages(UnirestInstance unirest, String subPath, boolean returnValueOnly = true, int maxPages = 50) {
+    //TODO maxPages should perhaps be mandatory
+    static ArrayList getJsonPages(UnirestInstance unirest, String subPath, boolean returnValueOnly = true, int maxPages = 10) {
 
 
         int start = 0
@@ -133,9 +145,11 @@ class BitbucketInstanceManagerRest {
 
 
             //Extra loop protection
+
             if (page > maxPages) {
                 throw new Exception("Returned more than expected pages (${page}) when querying:" + subPath)
             }
+
             page++
 
             HttpResponse<JsonNode> response = unirest.get(subPath).accept("application/json").queryString("start", start).asJson()
@@ -399,6 +413,9 @@ class BitbucketInstanceManagerRest {
     BitbucketRepo getRepo(String projectKey, String repoNameOrSlug) {
         ArrayList<BitbucketRepo> projectRepos = getRepos(projectKey)
 
+        BitbucketRepo repo = projectRepos.find { it.name == repoNameOrSlug || it.slug == repoNameOrSlug }
+
+        assert repo: "Error, could not find repo \"$repoNameOrSlug\" in project \"$projectKey\" "
         return projectRepos.find { it.name == repoNameOrSlug || it.slug == repoNameOrSlug }
 
     }
@@ -443,7 +460,7 @@ class BitbucketInstanceManagerRest {
 
         UnirestInstance unirest = newUnirest
         repos.each { bitbucketRepo ->
-            assert bitbucketRepo instanceof BitbucketRepo && bitbucketRepo.isValid() : "Error deleting bitbucket repo, was supplied an invalid repo object:" + bitbucketRepo.toString()
+            assert bitbucketRepo instanceof BitbucketRepo && bitbucketRepo.isValid(): "Error deleting bitbucket repo, was supplied an invalid repo object:" + bitbucketRepo.toString()
 
             HttpResponse response = unirest.delete("/rest/api/latest/projects/${bitbucketRepo.project.key}/repos/${bitbucketRepo.slug}").asEmpty()
 
@@ -506,11 +523,17 @@ class BitbucketInstanceManagerRest {
         if (pushAllBranches) {
             ArrayList<RefSpec> branches = localRepo.branchList().call().collect { new RefSpec(it.getName()) }
             pushCommand.setRefSpecs(branches)
+            log.debug("\tPushing branches: " + branches.collect { it.toString() }.join(","))
         }
 
+        if (log.isEnabledForLevel(Level.INFO)) {
+            pushCommand.setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out)))
+        }
 
+        log.info("\tStarting push")
         ArrayList<PushResult> results = pushCommand.call() as ArrayList<PushResult>
-
+        log.info("\tFinished push")
+        log.debug("\t\tOutput:" + results.messages.join(","))
 
         return !results.empty
 
@@ -526,65 +549,196 @@ class BitbucketInstanceManagerRest {
      */
     static boolean mirrorRepo(File outputDir, String srcUrl) {
 
-        Git git = Git.cloneRepository().setURI(srcUrl).setDirectory(new File(outputDir.canonicalPath + "/.git")).setMirror(true).call()
+        log.info("Performing Git mirror clone")
+        log.info("\tSource url:" + srcUrl)
+        log.info("\tLocal destination folder:" + outputDir.absoluteFile.absolutePath)
+
+        log.debug("\tStarting clone")
+        long cloneStarted = System.currentTimeSeconds()
+        Git git
+        CloneCommand cloneCommand = Git.cloneRepository().setURI(srcUrl).setDirectory(new File(outputDir.canonicalPath + "/.git")).setMirror(true)
+
+        if (log.isEnabledForLevel(Level.INFO)) {
+            cloneCommand.setProgressMonitor(new TextProgressMonitor(new PrintWriter(System.out)))
+        }
+
+        Thread cloneThread = Thread.start { git = cloneCommand.call() }
+
+
+        while (cloneThread.isAlive()) {
+            sleep(2000)
+
+            log.debug("\t\tClone in progress, so far cloned: " + (outputDir.directorySize() / (1024 * 1024)).round() + "MBytes")
+
+        }
+
+        log.debug("\tFinished clone after ${System.currentTimeSeconds() - cloneStarted}s")
+        log.debug("\tGot " + (outputDir.directorySize() / (1024 * 1024)).round() + "MB")
 
 
         //Set bare to false
+        log.debug("\tSetting directory to bare=false")
         StoredConfig config = git.repository.getConfig()
         config.setBoolean("core", null, "bare", false)
         config.save()
 
         //Try and determine remotes main branch, if it fails default to master
+        log.debug("\tDetermining main branch")
         String mainBranch = git.lsRemote().call().find { it.name == "HEAD" }?.target?.name ?: "master"
         mainBranch = mainBranch.takeRight(mainBranch.length() - mainBranch.lastIndexOf("/") - 1)
+        log.debug("\t\tMain Branch:" + mainBranch)
 
+        log.info("\tChecking out main branch" + mainBranch)
         //Reopen repo
         git = Git.open(outputDir)
         //Checkout main branch
         git.checkout().setName(mainBranch).call()
+        log.info("\tFinished mirroring Git repo.")
 
         return true
 
     }
 
 
-    /**
-     * Not finished
+    static RevCommit addAndCommit(File localRepoDir, String message, String filePattern = ".", String authorName = "", String authorMail = "") {
 
-     void gitCommit(File localRepoDir, String filePattern = "*") {
-     Git localRepo = Git.open(localRepoDir)
+        Git localRepo = Git.open(localRepoDir)
+        localRepo.add().addFilepattern(filePattern).call()
+        CommitCommand commitCommand = localRepo.commit().setMessage(message)
+        if (authorName && authorMail) {
+            commitCommand.setAuthor(authorName, authorMail)
+        }
 
-     Status test = localRepo.status().call()
-
-
-     true
-     }
-
-     */
+        return commitCommand.call()
 
 
-    class BitbucketCommit implements BitbucketJsonEntity {
+    }
+
+
+    class BitbucketChange implements BitbucketJsonEntity {
+
+
+        String contentId
+        String fromContentId
+        Map path = [components: [], parent: "", name: "", extension: "", toString: ""]
+        boolean executable
+        long percentUnchanged
+        String type
+        String nodeType
+        boolean srcExecutable
+        Map<String, ArrayList> links = ["self": [[href: ""]]]
+        Map properties = [gitChangeType: ""]
+        BitbucketCommit commit
+
+
+        boolean isValid() {
+
+            return contentId && parentObject instanceof BitbucketInstanceManagerRest && commit.isValid()
+
+        }
+
+        String getActionSymbol() {
+
+            switch (type) {
+                case "MODIFY":
+                    return "📝"
+                case "ADD":
+                    return "➕"
+                case "DELETE":
+                    return "🗑️"
+                case "COPY":
+                    return "📋"
+                case "MOVE":
+                    return "🗂️"
+                default:
+                    return "❓ - " + type
+            }
+
+
+        }
+
+
+        String getFileNameTruncated(int maxLen) {
+
+            assert maxLen > 4
+            String completeName = path.toString
+
+            if (completeName.length() <= maxLen) {
+                return completeName
+            }
+
+            return "..." + completeName.takeRight(maxLen - 3)
+
+        }
+
+
+        static getMarkdownHeader() {
+
+            return "| Action | File |\n|--|--|\n"
+
+        }
+
+        static getMarkdownFooter() {
+
+            return "\n\n➕ - Added\t📝 - Modified\t📋 - Copied\t🗂️ - Moved\t🗑 - Deleted\t"
+
+        }
+
+        String toMarkdown() {
+
+            String out = "|  " + actionSymbol + "  | [${getFileNameTruncated(60)}](${links.self.href.first()}) |" + "\n"
+
+
+            return out
+
+        }
+
+
+    }
+
+
+    public class BitbucketCommit implements BitbucketJsonEntity {
 
         String id
         String displayId
         CommitUser author
-        String authorTimeStamp
+        long authorTimeStamp
         CommitUser committer
-        String committerTimestamp
+        long committerTimestamp
         String message
-        ArrayList<String> parentId
+
+
+        ArrayList<Map> parents = [["id": "", "displayId": ""]]
+        //ArrayList<Map<String,String>> parents = [["id": "", "displayId": ""]]
+        public BitbucketRepo repository
+
+        static final DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
 
         class CommitUser {
             String name
             String emailAddress
+
+
+            String getProfileUrl(String baseUrl) {
+
+                return baseUrl + "/users/" + URLEncoder.encode(name, StandardCharsets.UTF_8)
+            }
         }
 
 
         boolean isValid() {
 
-            return id && displayId && message && parentObject instanceof BitbucketInstanceManagerRest
+            return id && displayId && message && parentObject instanceof BitbucketInstanceManagerRest && repository.isValid()
 
+        }
+
+        boolean isAMerge() {
+            return parents.size() > 1
+        }
+
+        static String getMergerSymbol() {
+            return "🔗"
         }
 
         String toString() {
@@ -593,39 +747,95 @@ class BitbucketInstanceManagerRest {
         }
 
 
+        String getMessageTruncated(int maxLen) {
 
-        /*
-
-        static ArrayList<BitbucketCommit> fromJson(String rawJson, BitbucketRepo parent) {
-
-
-            Type type
-            ArrayList<BitbucketCommit> result
-
-            if (rawJson.startsWith("[")) {
-
-                type = TypeToken.getParameterized(ArrayList.class, this).getType()
-
-                result =  getObjectMapper().fromJson(rawJson,type)
-            } else if (rawJson.startsWith("{")) {
-                type = TypeToken.getParameterized(this).getType()
-                result =  [getObjectMapper().fromJson(rawJson, type)]
-            } else {
-                throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
+            if (message.length() <= maxLen) {
+                return message
             }
 
-            //Static, has no parent
+            return "..." + message.takeRight(maxLen - 3)
+
+        }
+
+        String toMarkdown() {
+
+
+            String mainOut = "## Commit ID: " + displayId + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
+                    "**Author:** [${author.name}](${author.getProfileUrl(baseUrl)}) \n\n" +
+                    "**Timestamp:** " + (committerTimestamp != 0 ? dateFormat.format(new Date(committerTimestamp as long)) : dateFormat.format(new Date(authorTimeStamp as long))) + "\n\n" +
+                    "**Parents:** " + parents.displayId.join(", ") + "\n\n"
+                    "**Message:**\n\n"
+
+
+            message.eachLine {mainOut += "\t" +it  + "\n"}
+
+            mainOut += "\n\n"
+
+            String changesOut = BitbucketChange.markdownHeader
+            changes.each { changesOut += it.toMarkdown() }
+            changesOut += BitbucketChange.markdownFooter
+
+
+            return mainOut + changesOut
+
+        }
+
+
+        ArrayList<BitbucketChange> getChanges() {
+            return getChanges(repository.project.key, repository.slug, id)
+        }
+
+
+        ArrayList<BitbucketChange> getChanges(String projectKey, String repoSlug, String commitId) {
+
+
+            log.info("Getting changes for commit:")
+            log.info("\tProject:" + projectKey)
+            log.info("\tRepo:" + repoSlug)
+            log.info("\tCommit:" + commitId)
+
+
+            ArrayList<BitbucketChange> result = fromJson(getRawChanges(newUnirest, projectKey, repoSlug, commitId).toString(), BitbucketChange, parentObject) as ArrayList<BitbucketChange>
+
+            if (result.isEmpty() && this.isAMerge()) {
+                log.info("\tCommit has no changes but have been confirmed to be a Merge-commit, fetching changes performed by merge")
+                result = fromJson(getRawChanges(newUnirest, projectKey, repoSlug, commitId, parents.first().id as String).toString(), BitbucketChange, parentObject) as ArrayList<BitbucketChange>
+            }
+
+            result.each { it.commit = this }
 
             return result
 
-
-        }*/
-
-
-        ArrayList getChanges() {
+        }
 
 
+        static ArrayList getRawChanges(UnirestInstance instance, String projectKey, String repoSlug, String commitId, String since = null) {
 
+            String url = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/commits/$commitId/changes"
+
+            since ? url += "?since=$since"  : ""
+
+            return getJsonPages(instance, url)
+
+        }
+
+
+        String getBranchId() {
+            return branchRaw.id
+        }
+
+        String getBranchName() {
+            return branchRaw.name
+        }
+
+        Map getBranchRaw() {
+
+            String url = "/rest/branch-utils/latest/projects/${repository.project.key}/repos/${repository.slug}/branches/info/${displayId}"
+
+            ArrayList<Map> branches = getJsonPages(newUnirest, url)
+            assert branches.size() == 1: "Error finding branch for Commit ${displayId}, API returned ${branches.size()} branches"
+
+            return branches.first() as Map
         }
 
 
@@ -669,13 +879,6 @@ class BitbucketInstanceManagerRest {
         }
 
 
-
-
-
-
-        /** --- Repo history --- **/
-
-
         /**
          * Get Commits from repo
          * @param fromId Get all commits starting from this commit (not inclusive)
@@ -699,10 +902,38 @@ class BitbucketInstanceManagerRest {
             ArrayList rawCommits = getJsonPages(instance, url)
 
 
+            ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, parentObject)
+            bitbucketCommits.each { it.repository = this }
+            return bitbucketCommits.sort { it.authorTimeStamp }
+
+
+        }
+
+        BitbucketCommit getCommit(String commitId) {
+
+            String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/commits/" + commitId
+
+            UnirestInstance instance = getNewUnirest()
+            ArrayList rawCommits = getJsonPages(instance, url, false)
+
+            assert rawCommits.size() == 1 : "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
+
 
             ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, parentObject)
-            return bitbucketCommits.sort{it.authorTimeStamp}
+            bitbucketCommits.each { it.repository = this }
 
+            BitbucketCommit commit = bitbucketCommits.first()
+
+            //Remove all but id and displayId, to return same value has getCommits()
+            commit.parents.each {parentMap ->
+                parentMap.removeAll {key, value ->
+                   ! (key as String in ["id", "displayId"])
+                }
+            }
+
+
+
+            return commit
 
         }
 
@@ -733,8 +964,6 @@ class BitbucketInstanceManagerRest {
             return key && id && name && type && parentObject instanceof BitbucketInstanceManagerRest
 
         }
-
-
 
 
     }
