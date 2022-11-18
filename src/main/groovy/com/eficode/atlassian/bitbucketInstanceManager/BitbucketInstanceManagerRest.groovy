@@ -1,10 +1,14 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
-
+import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kong.unirest.Cookie
 import kong.unirest.Cookies
+import kong.unirest.HttpRequestMultiPart
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
+import kong.unirest.MultipartBody
 import kong.unirest.Unirest
 import kong.unirest.UnirestException
 import kong.unirest.UnirestInstance
@@ -13,6 +17,7 @@ import org.eclipse.jgit.api.CloneCommand
 import org.eclipse.jgit.api.CommitCommand
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.TransportCommand
+import org.eclipse.jgit.api.errors.TransportException
 import org.eclipse.jgit.lib.StoredConfig
 import org.eclipse.jgit.lib.TextProgressMonitor
 import org.eclipse.jgit.revwalk.RevCommit
@@ -41,6 +46,7 @@ class BitbucketInstanceManagerRest {
     String adminPassword
     //JsonObjectMapper objectMapper
     String baseUrl
+    static Gson gson = new Gson()
 
     BitbucketInstanceManagerRest(String username, String password, String baseUrl) {
         this.baseUrl = baseUrl
@@ -114,13 +120,23 @@ class BitbucketInstanceManagerRest {
     }
 
 
-    ArrayList getJsonPages(String subPath, long maxPages, boolean returnValueOnly = true) {
+    ArrayList<JsonNode> getJsonPages(String subPath, long maxPages, boolean returnValueOnly = true) {
 
         return getJsonPages(newUnirest, subPath, maxPages, returnValueOnly)
     }
 
+    static ArrayList<Map> jsonPagesToGenerics(ArrayList jsonPages) {
 
-    static ArrayList getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, boolean returnValueOnly = true) {
+        return gson.fromJson(jsonPages.toString(), TypeToken.getParameterized(ArrayList.class, Map).getType())
+    }
+
+    static Map jsonPagesToGenerics(JsonNode jsonNode) {
+
+        return gson.fromJson(jsonNode.toString(), TypeToken.get(Map).getType())
+    }
+
+
+    static ArrayList<JsonNode> getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, boolean returnValueOnly = true) {
 
 
         int start = 0
@@ -129,17 +145,6 @@ class BitbucketInstanceManagerRest {
         ArrayList responses = []
 
         while (!isLastPage && start >= 0) {
-
-
-            //Extra loop protection
-
-
-            if (maxResponses != 0 && responses.size() > maxResponses) {
-                log.warn("Returned more than expected responses (${responses.size()}) when querying:" + subPath)
-                responses = responses[0..maxResponses-1]
-                break
-            }
-
 
 
             HttpResponse<JsonNode> response = unirest.get(subPath).accept("application/json").queryString("start", start).asJson()
@@ -151,13 +156,25 @@ class BitbucketInstanceManagerRest {
 
             if (returnValueOnly) {
                 if (response.body.object.has("values")) {
+
                     responses += response.body.object.get("values") as ArrayList<Map>
                 } else {
+
                     throw new InputMismatchException("Unexpected body returned from $subPath, expected JSON with \"values\"-node but got: " + response.body.toString())
                 }
 
             } else {
                 responses += response.body
+            }
+
+            if (maxResponses != 0) {
+                if (responses.size() > maxResponses) {
+                    log.warn("Returned more than expected responses (${responses.size()}) when querying:" + subPath)
+                    responses = responses[0..maxResponses - 1]
+                    break
+                } else if (responses.size() == maxResponses) {
+                    break
+                }
             }
 
 
@@ -260,11 +277,27 @@ class BitbucketInstanceManagerRest {
         return true
     }
 
+    Map getApplicationProperties() {
+
+        ArrayList<JsonNode> rawOut = getJsonPages("/rest/api/latest/application-properties", 1, false)
+
+        return jsonPagesToGenerics(rawOut.first())
+
+    }
+
     String getStatus() {
 
         Map statusMap = newUnirest.get("/status").asJson()?.body?.object?.toMap()
 
         return statusMap?.state
+    }
+
+    String getLicense() {
+
+        ArrayList rawOut = getJsonPages("/rest/api/latest/admin/license", 1, false)
+
+        return jsonPagesToGenerics(rawOut)?.first()?.license
+
     }
 
 
@@ -495,12 +528,12 @@ class BitbucketInstanceManagerRest {
         }
 
         if (existingRemote) {
-            log.info("\tLocal repo already has the needed git remote:" + existingRemote.toString())
+            log.info("\tLocal repo already has the needed git remote:" + existingRemote.name)
         } else {
             log.info("\tLocal repo is missing git remote, adding it now")
 
-            assert localRepo.remoteAdd().setUri(suppliedRepoUrl).setName(remoteRepo.name).call(): "Error adding new remote:" + suppliedRepoUrl.toString()
-            existingRemote = localRepo.remoteList().call().find { it.name == remoteRepo.name }
+            assert localRepo.remoteAdd().setUri(suppliedRepoUrl).setName(remoteRepo.name.replace(" ", "_")).call(): "Error adding new remote:" + suppliedRepoUrl.toString()
+            existingRemote = localRepo.remoteList().call().find { it.name == remoteRepo.name.replace(" ", "_") }
 
             assert existingRemote: "Error finding Git Remote after adding it"
 
@@ -510,8 +543,9 @@ class BitbucketInstanceManagerRest {
         TransportCommand pushCommand = localRepo.push().setRemote(existingRemote.name).setCredentialsProvider(new UsernamePasswordCredentialsProvider(adminUsername, adminPassword))
 
 
+        ArrayList<RefSpec> branches = []
         if (pushAllBranches) {
-            ArrayList<RefSpec> branches = localRepo.branchList().call().collect { new RefSpec(it.getName()) }
+            branches = localRepo.branchList().call().collect { new RefSpec(it.getName()) }
             pushCommand.setRefSpecs(branches)
             log.debug("\tPushing branches: " + branches.collect { it.toString() }.join(","))
         }
@@ -521,7 +555,23 @@ class BitbucketInstanceManagerRest {
         }
 
         log.info("\tStarting push")
-        ArrayList<PushResult> results = pushCommand.call() as ArrayList<PushResult>
+        ArrayList<PushResult> results
+        try {
+            results = pushCommand.call() as ArrayList<PushResult>
+        } catch (TransportException ex) {
+            if (ex.message.contains("Short read of block")) {
+                log.info("\t\tPush error due to a bug, triggering it again.")
+                //Appears to be a bug in Jgit, running it once more solves the problem
+                pushCommand = localRepo.push().setRemote(existingRemote.name).setCredentialsProvider(new UsernamePasswordCredentialsProvider(adminUsername, adminPassword))
+                if (pushAllBranches) {
+                    pushCommand.setRefSpecs(branches)
+                }
+                results = pushCommand.call() as ArrayList<PushResult>
+            } else {
+                throw ex
+            }
+        }
+
         log.info("\tFinished push")
         log.debug("\t\tOutput:" + results.messages.join(","))
 
@@ -687,7 +737,7 @@ class BitbucketInstanceManagerRest {
     }
 
 
-    public class BitbucketCommit implements BitbucketJsonEntity {
+    class BitbucketCommit implements BitbucketJsonEntity {
 
         String id
         String displayId
@@ -716,6 +766,23 @@ class BitbucketInstanceManagerRest {
             }
         }
 
+        static ArrayList<BitbucketCommit> fromRaw(ArrayList rawCommits, BitbucketRepo repo) {
+            ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, repo.parentObject)
+            bitbucketCommits.each { commit ->
+                //Set repo
+                commit.repository = repo
+                //Remove all but id and displayId, as getCommit and getCommits return different amount of info
+                commit.parents.each { parentMap ->
+                    parentMap.removeAll { key, value ->
+                        !(key as String in ["id", "displayId"])
+                    }
+                }
+
+            }
+
+            return bitbucketCommits
+
+        }
 
         boolean isValid() {
 
@@ -747,6 +814,11 @@ class BitbucketInstanceManagerRest {
 
         }
 
+        /**
+         * Return a MarkDown representation (optimized for bitbucket) of the commit including:
+         * Commit it, Author, Timestamp, Parents (commits ids) and commit message
+         * @return
+         */
         String toMarkdown() {
 
 
@@ -754,10 +826,10 @@ class BitbucketInstanceManagerRest {
                     "**Author:** [${author.name}](${author.getProfileUrl(baseUrl)}) \n\n" +
                     "**Timestamp:** " + (committerTimestamp != 0 ? dateFormat.format(new Date(committerTimestamp as long)) : dateFormat.format(new Date(authorTimeStamp as long))) + "\n\n" +
                     "**Parents:** " + parents.displayId.join(", ") + "\n\n"
-                    "**Message:**\n\n"
+            "**Message:**\n\n"
 
 
-            message.eachLine {mainOut += "\t" +it  + "\n"}
+            message.eachLine { mainOut += "\t" + it + "\n" }
 
             mainOut += "\n\n"
 
@@ -767,6 +839,21 @@ class BitbucketInstanceManagerRest {
 
 
             return mainOut + changesOut
+
+        }
+
+
+        /**
+         * Turn several commits in to Markdown (optimized for bitbucket)
+         * @param commits
+         * @return A String representation
+         */
+        static String toMarkdown(ArrayList<BitbucketCommit> commits) {
+
+            ArrayList<String> changesMd = commits.collect { it.toMarkdown() }
+
+            return changesMd.join("\n\n---\n\n\n")
+
 
         }
 
@@ -799,11 +886,11 @@ class BitbucketInstanceManagerRest {
         }
 
 
-        static ArrayList getRawChanges(UnirestInstance instance, String projectKey, String repoSlug, String commitId, long maxChanges, String since = null ) {
+        static ArrayList getRawChanges(UnirestInstance instance, String projectKey, String repoSlug, String commitId, long maxChanges, String since = null) {
 
             String url = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/commits/$commitId/changes"
 
-            since ? url += "?since=$since"  : ""
+            since ? url += "?since=$since" : ""
 
             return getJsonPages(instance, url, maxChanges)
 
@@ -815,14 +902,14 @@ class BitbucketInstanceManagerRest {
         }
 
         String getBranchName() {
-            return branchRaw.name
+            return branchRaw.displayId
         }
 
         Map getBranchRaw() {
 
             String url = "/rest/branch-utils/latest/projects/${repository.project.key}/repos/${repository.slug}/branches/info/${displayId}"
 
-            ArrayList<Map> branches = getJsonPages(newUnirest, url, 1)
+            ArrayList<Map> branches = jsonPagesToGenerics(getJsonPages(newUnirest, url, 1))
             assert branches.size() == 1: "Error finding branch for Commit ${displayId}, API returned ${branches.size()} branches"
 
             return branches.first() as Map
@@ -868,7 +955,81 @@ class BitbucketInstanceManagerRest {
             return object instanceof BitbucketRepo && this.name == object.name && this.id == object.id
         }
 
+        String getProjectKey() {
+            return project.key
+        }
 
+        String getRepositorySlug() {
+            return slug
+        }
+
+        /** --- Branch CRUD --- **/
+
+        /**
+         * Set the default branch of repo
+         * @param branchId ex: refs/heads/master or just master
+         * @return
+         */
+        boolean setDefaultBranch(String branch) {
+
+            UnirestInstance unirest = newUnirest
+
+            String branchId
+
+            if (branch.startsWith("refs/heads/")) {
+                branchId = branch
+            } else {
+                branchId = "refs/heads/" + branch
+            }
+
+            HttpResponse response = unirest.put("/rest/api/latest/projects/${project.key}/repos/${slug}/default-branch")
+                    .contentType("application/json")
+                    .body([id: branchId])
+                    .asEmpty()
+
+            return response.status == 204
+        }
+
+        String getDefaultBranchName() {
+            return defaultBranchRaw.displayId
+        }
+
+        /**
+         * Returns ID of default branch, ex: refs/heads/master
+         * @return
+         */
+        String getDefaultBranchId() {
+            return defaultBranchRaw.id
+        }
+
+        Map getDefaultBranchRaw() {
+
+            ArrayList rawOut = getJsonPages("/rest/api/latest/projects/${project.key}/repos/${slug}/default-branch", 1, false)
+            assert rawOut.size() == 1: "Error getting default branch for repo $name, API returned:" + rawOut
+            return jsonPagesToGenerics(rawOut.first()) as Map
+
+        }
+
+
+        Continue here
+        boolean createBranch(String branchName) {
+
+            UnirestInstance unirest = newUnirest
+
+            Map body = [
+                    //empty : false,
+                    name: branchName
+            ]
+
+            HttpResponse<JsonNode> rawResponse = unirest.post("/rest/branch-utils/latest/projects/${projectKey}/repos/${repositorySlug}/branches").body(body).contentType("application/json").asJson()
+
+
+            unirest.shutDown()
+
+            return null
+        }
+
+        /** --- Get commits --- **/
         /**
          * Get Commits from repo
          * @param fromId Get all commits starting from this commit (not inclusive)
@@ -891,10 +1052,20 @@ class BitbucketInstanceManagerRest {
 
             ArrayList rawCommits = getJsonPages(instance, url, maxCommits, true)
 
+            return BitbucketCommit.fromRaw(rawCommits, this)
 
-            ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, parentObject)
-            bitbucketCommits.each { it.repository = this }
-            return bitbucketCommits.sort { it.authorTimeStamp }
+
+        }
+
+        BitbucketCommit getLastCommitInBranch(String branchName) {
+
+            String parameter = "?limit=1&until=" + URLEncoder.encode("refs/heads/$branchName", StandardCharsets.UTF_8)
+            String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/commits" + parameter
+
+            ArrayList rawCommits = getJsonPages(newUnirest, url, 1)
+
+
+            return BitbucketCommit.fromRaw(rawCommits, this).first()
 
 
         }
@@ -904,26 +1075,284 @@ class BitbucketInstanceManagerRest {
             String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/commits/" + commitId
 
             UnirestInstance instance = getNewUnirest()
-            ArrayList rawCommits = getJsonPages(instance, url, 1, false )
+            ArrayList rawCommits = getJsonPages(instance, url, 1, false)
 
-            assert rawCommits.size() == 1 : "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
+            assert rawCommits.size() == 1: "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
 
 
-            ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, parentObject)
-            bitbucketCommits.each { it.repository = this }
+            BitbucketCommit commit = BitbucketCommit.fromRaw(rawCommits, this).first()
+            return commit
 
-            BitbucketCommit commit = bitbucketCommits.first()
+        }
 
-            //Remove all but id and displayId, to return same value has getCommits()
-            commit.parents.each {parentMap ->
-                parentMap.removeAll {key, value ->
-                   ! (key as String in ["id", "displayId"])
-                }
+
+        /** --- File CRUD --- **/
+
+        /**
+         *
+         * @param repoFilePath Path to file in repo (no starting "/")
+         * @param branchName Name of branch to update in
+         * @param fileContent The content that the file should have
+         * @param commitMessage Message for the commit/change
+         * @return the new BitbucketCommit
+         */
+        BitbucketCommit createFile(String repoFilePath, String branchName, String fileContent, String commitMessage) {
+
+
+            File tempFile = File.createTempFile("bitbucketUpdateFile", "tmp")
+            tempFile.text = fileContent
+
+            BitbucketCommit newCommit = editFileRaw(repoFilePath, branchName, tempFile, commitMessage)
+
+            tempFile.delete()
+
+            return newCommit
+        }
+
+
+        String getFileContent(String repoFilePath, String branchName = "", String commitId = "") {
+
+
+            assert ((!branchName && commitId) || (branchName && !commitId)) || !(branchName && commitId): "Error you must supply either branchName or commitId, or neither, got branchName:\"$branchName\", commitId:\"$commitId\""
+
+            String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/browse/$repoFilePath"
+
+            if (branchName) {
+                url += "?at=" + URLEncoder.encode("refs/heads/$branchName", StandardCharsets.UTF_8)
+            } else if (commitId) {
+                url += "?at=" + commitId
             }
 
 
+            Map rawOut = jsonPagesToGenerics(getJsonPages(url, 1, false).first())
 
-            return commit
+            if (rawOut.containsKey("errors")) {
+                throw new Exception(rawOut.errors.collect { it?.message }?.join(", "))
+            }
+
+            String out = rawOut.lines.collect { it?.text }.join("\n")
+
+            return out
+
+        }
+
+        /**
+         *
+         * @param repoFilePath Path to file in repo (no starting "/")
+         * @param branchName Name of branch to update in
+         * @param fileContent The content that the file should have
+         * @param commitMessage Message for the commit/change
+         * @return the new BitbucketCommit
+         */
+        BitbucketCommit updateFile(String repoFilePath, String branchName, String fileContent, String commitMessage) {
+
+            BitbucketCommit lastCommit = getLastCommitInBranch(branchName)
+            File tempFile = File.createTempFile("bitbucketUpdateFile", "tmp")
+            tempFile.text = fileContent
+
+            BitbucketCommit newCommit = editFileRaw(repoFilePath, branchName, tempFile, commitMessage, lastCommit.id)
+
+
+            tempFile.delete()
+
+            return newCommit
+        }
+
+
+        /**
+         * Add content to start of file
+         * @param repoFilePath Path to file in repo (no starting "/")
+         * @param branchName Name of branch to update in
+         * @param head content to add to the head/start of existing file
+         * @param commitMessage Message for the commit/change
+         * @return the new BitbucketCommit
+         */
+        BitbucketCommit prependFile(String repoFilePath, String branchName, String head, String commitMessage) {
+
+            String previousContent = getFileContent(repoFilePath, branchName)
+
+            return updateFile(repoFilePath, branchName, head + previousContent, commitMessage)
+
+        }
+
+        /**
+         * Add content to end of file
+         * @param repoFilePath Path to file in repo (no starting "/")
+         * @param branchName Name of branch to update in
+         * @param tail content to add to the tail end of existing file
+         * @param commitMessage Message for the commit/change
+         * @return the new BitbucketCommit
+         */
+        BitbucketCommit appendFile(String repoFilePath, String branchName, String tail, String commitMessage) {
+
+            String previousContent = getFileContent(repoFilePath, branchName)
+
+            return updateFile(repoFilePath, branchName, previousContent + tail, commitMessage)
+
+        }
+
+
+        /**
+         *
+         * Intended for private use, use updateFile or createFile
+         *
+         * @param repoFilePath Path to file in repo (no starting "/")
+         * @param branchName Name of branch to update in
+         * @param fileContent The content that the file should have
+         * @param commitMessage Message for the commit/change
+         * @param sourceCommit the commit ID of the file before it was edited, used to identify if content has changed. Or null if this is a new file
+         * @return the new BitbucketCommit
+         */
+        BitbucketCommit editFileRaw(String repoFilePath, String branchName, File sourceFile, String commitMessage, String sourceCommit = null) {
+
+            UnirestInstance unirest = newUnirest
+
+
+            MultipartBody body = unirest.put("/rest/api/latest/projects/${project.key}/repos/${slug}/browse/${repoFilePath}")
+                    .field("branch", branchName)
+                    .field("content", sourceFile)
+                    .field("message", commitMessage)
+
+            if (sourceCommit) {
+                body.field("sourceCommitId", sourceCommit)
+            }
+
+            HttpResponse<JsonNode> response = body.asJson()
+
+
+            unirest.shutDown()
+
+
+            if (response.body.toString().contains("error")) {
+
+                throw new Exception("Error updating Bitbucket file, API responded:" + response.body.toPrettyString())
+            }
+
+            BitbucketCommit newCommit = BitbucketCommit.fromRaw([response.body], this).first()
+
+
+            return newCommit
+        }
+
+        /** --- Pull Request Config CRUD --- **/
+
+        boolean enableAllMergeStrategies(String defaultStrategy = "no-ff") {
+            return setEnabledMergeStrategies(defaultStrategy, ["no-ff", "ff", "ff-only", "rebase-no-ff", "rebase-ff-only", "squash", "squash-ff-only"])
+        }
+
+        boolean setEnabledMergeStrategies(String defaultStrategy, ArrayList<String> enabledStrategies) {
+
+            log.info("Setting enabled Merge strategies for repo " + name)
+            ArrayList<String> possibleStrategies = ["no-ff", "ff", "ff-only", "rebase-no-ff", "rebase-ff-only", "squash", "squash-ff-only"]
+            assert enabledStrategies.every { it in possibleStrategies }: "Got unsupported merge strategy"
+            assert defaultStrategy in enabledStrategies: "The default strategy must be part of the enabledStrategies"
+
+            log.info("\tDefault strategy:" + defaultStrategy)
+            log.info("\tEnabled strategies:" + enabledStrategies.join(","))
+
+            Map restBody = [
+                    "mergeConfig": [
+                            strategies     : enabledStrategies.collect { [id: it] },
+                            defaultStrategy: [id: defaultStrategy]
+                    ]
+            ]
+
+            UnirestInstance unirest = newUnirest
+
+            HttpResponse<JsonNode> responseRaw = unirest.post("/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/settings/pull-requests")
+                    .contentType("application/json")
+                    .body(restBody)
+                    .asJson()
+            unirest.shutDown()
+
+            assert responseRaw.status == 200: "Error updating merge strategies:" + response?.body?.toString()
+
+            Map response = jsonPagesToGenerics(responseRaw.body)
+
+            assert response.mergeConfig.type == "REPOSITORY": "Error setting REPO-level merge strategies"
+            assert response.mergeConfig.defaultStrategy.id == defaultStrategy: "Error setting default merge strategy"
+            assert response.mergeConfig.strategies.findAll { it.enabled }.id == enabledStrategies: "Error setting enabled strategies, API returned enabled strategies:" + response?.mergeConfig?.strategies?.findAll { it.enabled }?.id
+
+            log.info("\tMerge strategies successfully set")
+            return true
+
+        }
+
+
+        /**
+         * True if the merge settings are inherited from project
+         */
+        boolean mergeStrategyIsInherited() {
+
+            return prRawConfig.mergeConfig.type != "REPOSITORY"
+        }
+
+        /**
+         * Get the id of all the enabled merge strategies
+         * Possible IDs: no-ff, ff, ff-only, rebase-no-ff, rebase-ff-only, squash, squash-ff-only
+         * @return Array of IDs
+         */
+        ArrayList<String> getEnabledMergeStrategies() {
+
+            Map mergeConfig = prRawConfig.mergeConfig as Map
+            ArrayList<Map> strategies = mergeConfig.strategies as ArrayList<Map>
+
+            strategies.removeAll { !it.enabled }
+
+            return strategies.id
+
+        }
+
+        /**
+         * Get the default merge strategy for the repo
+         * @return one of: no-ff, ff, ff-only, rebase-no-ff, rebase-ff-only, squash, squash-ff-only
+         */
+        String getDefaultMergeStrategy() {
+
+            Map mergeConfig = prRawConfig.mergeConfig as Map
+            Map defaultStrategy = mergeConfig.defaultStrategy as Map
+
+            return defaultStrategy.id
+        }
+
+
+        /**
+         * Get the raw API output for PR config
+         * @return
+         */
+        Map getPrRawConfig() {
+
+            String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/settings/pull-requests"
+
+            Map rawStrategies = jsonPagesToGenerics(getJsonPages(url, 1, false).first())
+
+
+            return rawStrategies
+        }
+
+
+        /** -- Pull Request CRUD -- **/
+
+
+        void createPullRequestRaw(String title, String description, String fromRef, String toBranch) {
+
+            //Source branch 11aaa
+            //Destination branch: 6c8
+
+            //GET /projects/SMP/repos/vscode/commits?until=11add3cf2ad5bcaead733aa4c8c9d2a017b4b7fc&since=6c85bb68aae4fdbcecea4797407259ca2cabec60&secondaryRepositoryId=153
+
+            String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/pull-requests"
+
+            Map body = [
+                    description: description,
+                    title : title,
+                    fromRef    : [
+                            id: fromRef
+                    ],
+                    toRef      : [
+                            id: toBranch
+                    ]
+            ]
 
         }
 

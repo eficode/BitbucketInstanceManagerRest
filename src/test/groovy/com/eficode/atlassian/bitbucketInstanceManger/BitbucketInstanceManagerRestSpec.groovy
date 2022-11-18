@@ -6,6 +6,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketChange as BitbucketChange
 import com.eficode.devstack.container.impl.BitbucketContainer
+import groovy.test.GroovyAssert
 import kong.unirest.Unirest
 import kong.unirest.UnirestInstance
 import org.apache.commons.io.FileUtils
@@ -55,20 +56,34 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     @Shared
     BitbucketContainer bitbucketContainer = new BitbucketContainer(baseUrl)
 
+    @Shared
+    File mainTempDir = Files.createTempDirectory(BitbucketInstanceManagerRestSpec.simpleName).toFile().absoluteFile
 
-    // run before the first feature method
+    @Shared
+    File repoCacheDir = new File(mainTempDir, "main-repo-cache/").absoluteFile
+
+
+    // run once before the first feature method
     def setupSpec() {
 
         unirestInstance.config().defaultBaseUrl(baseUrl).setDefaultBasicAuth(restAdmin, restPw).enableCookieManagement(false)
-
-        //bitbucketContainer.containerImageTag = "8.5.0"
         bitbucketContainer.containerName = bitbucketContainer.extractDomainFromUrl(baseUrl)
-        //bitbucketContainer.stopAndRemoveContainer()
-        //bitbucketContainer.createContainer()
-        //bitbucketContainer.startContainer()
+
+        repoCacheDir.mkdirs()
+    }
+
+    def cleanupSpec() {
+
+        log.info("Deleting directory:" + mainTempDir.path)
+        mainTempDir.deleteDir()
+
     }
 
 
+    /**
+     * Get a new BitbucketInstanceManagerRest instance
+     * @return
+     */
     BitbucketInstanceManagerRest setupBb() {
 
         return new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
@@ -81,69 +96,303 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
     /**
      *
-     * Mirrors this project from github
+     * Mirror-clones the VSCODE repo from Github
+     * ~600MB, 700B ranches
      *
      * @return File object of the new temp folder
      */
-    File setupLocalGitRepo() {
+    File setupLocalGitRepo(String repoUrl = "https://github.com/microsoft/vscode.git") {
 
-        File tempDir = Files.createTempDirectory(BitbucketInstanceManagerRestSpec.simpleName).toFile().absoluteFile
 
-        BitbucketInstanceManagerRest.mirrorRepo(tempDir, "https://github.com/eficode/BitbucketInstanceManagerRest.git")
+        log.info("Setting up local git repo")
+        if (repoCacheDir.listFiles().size() == 0) {
+            log.info("\tCloning remote repo $repoUrl to " + repoCacheDir.absolutePath)
+            BitbucketInstanceManagerRest.mirrorRepo(repoCacheDir, repoUrl)
+            assert FileUtils.listFilesAndDirs(repoCacheDir, TrueFileFilter.INSTANCE, null).any { it.name == ".git" }
 
-        //Delete the large packages branch from the local repo
-        Git.open(tempDir).branchDelete().setBranchNames("packages").setForce(true).call()
+        } else {
+            log.debug("\tAlready have a cached clone of the remote repo")
+        }
 
-        assert FileUtils.listFilesAndDirs(tempDir, TrueFileFilter.INSTANCE, null).any { it.name == ".git" }
+        File newDir = new File(mainTempDir, "repo-clone-${System.currentTimeSeconds().toString()[-4..-1]}")
+        log.info("\tCreating new directory:" + newDir.absolutePath)
+        log.info("\tCopying cached repo to the new dir")
 
-        return tempDir
+        FileUtils.copyDirectory(repoCacheDir, newDir)
+
+        log.info("\t\tFinished")
+        return newDir
+    }
+
+    /**
+     * Sets up a new project, repo and pushes output of setupLocalGitRepo to it
+     * @param projectName
+     * @param projectKey
+     * @param repoName
+     * @return
+     */
+    BitbucketRepo setupRepo(String projectName, String projectKey, String repoName) {
+
+        BitbucketInstanceManagerRest bb = setupBb()
+
+
+        //Cleanup conflicting projects
+        bb.getProjects().findAll { it.name == projectName || it.key == projectKey }.each { bb.deleteProject(it, true) }
+
+        //Setup new project and repo
+        BitbucketProject sampleProject = bb.createProject(projectName, projectKey)
+        BitbucketRepo sampleRepo = bb.createRepo(sampleProject, repoName)
+
+        //Mirror-clone remote repo locally, push all of its branches to the new repo
+        File localGitRepoDir = setupLocalGitRepo()
+        assert bb.pushToRepo(localGitRepoDir, sampleRepo, true)
+
+        return sampleRepo
     }
 
     @Ignore
-    def testSetupOfBase() {
+    def "Test setup of basic application config"() {
 
-        setup:
+        setup: "Remove container if it exists, create a new one"
+
+        bitbucketContainer.containerImageTag = "8.5.0"
+        bitbucketContainer.stopAndRemoveContainer()
+        bitbucketContainer.createContainer()
+        bitbucketContainer.startContainer()
+
+        String instanceDisplayName = "SPOCK Bitbucket"
+
+        when: "Setting application properties"
+
 
         BitbucketInstanceManagerRest bb = setupBb()
-        bb.setApplicationProperties(bitbucketLicense, "Bitbucket", baseUrl)
+
+
+        //bb.setApplicationProperties(bitbucketLicense, "Bitbucket", baseUrl)
+
+        then:
+        bb.status == "RUNNING"
+        bb.license.strip() == bitbucketLicense.strip()
+        bb.applicationProperties.displayName == instanceDisplayName
+
+
+    }
+
+
+    def "Test update of file via API"() {
+
+        setup:
+        String projectName = "File update tests"
+        String projectKey = "FU"
+        String repoName = "Updating files"
+
+        BitbucketRepo sampleRepo = setupRepo(projectName, projectKey, repoName)
+        BitbucketInstanceManagerRest bb = sampleRepo.parentObject as BitbucketInstanceManagerRest
+
+        BitbucketCommit lastCommitAtSetup = sampleRepo.getLastCommitInBranch("main")
+
+
+        when:
+        BitbucketCommit updateFileCommit = sampleRepo.updateFile("README.md", "main", "An updated to the file ${new Date()}", "A Commit MSG" + new Date().toString())
+
+        then:
+        updateFileCommit != null
+        updateFileCommit.message.startsWith("A Commit MSG")
+        updateFileCommit.branchName == "main"
+        updateFileCommit.parents.first().id == lastCommitAtSetup.id
+
+
+    }
+
+
+    def "Test PR config crud"() {
+
+
+        setup:
+        log.info("Testing Pull Request Config CRUD actions using Bitbucket API")
+        String projectName = "Pull Request Actions"
+        String projectKey = "PRA"
+        String repoName = "CRUDing PR Config"
+
+        BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
+        BitbucketProject bbProject = bb.getProject(projectKey)
+
+        if (bbProject) {
+            bb.deleteProject(bbProject, true)
+        }
+
+        bbProject = bb.createProject(projectName, projectKey)
+        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
 
         expect:
-        bb.status == "RUNNING"
+        //Reading the default settings of a newly created repo
+        assert bbRepo.defaultMergeStrategy == "no-ff" : "The new repo got an unexpected default merge strategy"
+        assert bbRepo.enabledMergeStrategies == ["no-ff"] : "The new repo got an unexpected enabled merge strategies"
+        assert bbRepo.mergeStrategyIsInherited() : "The new repo started with repo-local strategies"
 
 
+        //Updating repo with new settings, and reading them back
+        assert bbRepo.setEnabledMergeStrategies("rebase-no-ff", ["ff-only", "rebase-no-ff"]) : "Error setting Merge Strategies "
+
+        assert bbRepo.defaultMergeStrategy == "rebase-no-ff" : "API does not report the expected default merge strategy after setting it"
+        assert bbRepo.enabledMergeStrategies == ["ff-only", "rebase-no-ff"] : "API does not report the expected  merge strategies after setting them"
+        assert ! bbRepo.mergeStrategyIsInherited() : "After setting repo-local merge strategies, they are still inherited from project"
+
+
+        assert bbRepo.enableAllMergeStrategies() : "Error enabling all Merge Strategies"
+        assert bbRepo.defaultMergeStrategy == "no-ff" : "Enabling all merge strategies, ended up setting an unexpected default strategy"
+
+        assert bbRepo.enableAllMergeStrategies("ff-only") : "Error enabling all Merge Strategies"
+        assert bbRepo.defaultMergeStrategy == "ff-only"
+
+
+        //Giving the wrong input
+        GroovyAssert.shouldFail {bbRepo.setEnabledMergeStrategies("wrong-default" , ["wrong-default", "ff-only"]) }
+        GroovyAssert.shouldFail {bbRepo.setEnabledMergeStrategies("ff-only" , ["wrong-strategy", "ff-only"]) }
+
+    }
+
+
+    def "Test PR CRUD"() {
+
+        Continue here
+
+
+        setup:
+        log.info("Testing Pull Request Config CRUD actions using Bitbucket API")
+        String projectName = "Pull Request Actions"
+        String projectKey = "PRA"
+        String repoName = "CRUDing PRs"
+
+        BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
+        BitbucketProject bbProject = bb.getProject(projectKey)
+
+        if (bbProject) {
+            bb.deleteProject(bbProject, true)
+        }
+
+        bbProject = bb.createProject(projectName, projectKey)
+        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
+
+        String expectedFileContent = "Initial file content"
+        BitbucketCommit creatingFileCommit = bbRepo.createFile("README.md", "master", expectedFileContent, "Creating the file in the master branch")
+
+        expectedFileContent += "\n\nUpdate from second branch"
+        BitbucketCommit firstUpdateCommit = bbRepo.updateFile("README.md", "a-separate-branch", expectedFileContent, "A commit in separate branch")
+
+
+        when:
+        true
+        //bbRepo.createPullRequestRaw("PR Title", "PR Description")
+
+        then:
+        true
+
+    }
+
+    def "Test file crud using Bitbucket API"() {
+
+        setup:
+        log.info("Testing File CRUD actions using Bitbucket API")
+        String projectName = "File Actions"
+        String projectKey = "FA"
+        String repoName = "CRUDing files"
+        String branchName = "main"
+        String expectedFileText = "Created ${new Date()}\n\nIn Branch: $branchName \n\n ---- \n"
+
+
+        BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
+        BitbucketProject bbProject = bb.getProject(projectKey)
+
+        if (bbProject) {
+            bb.deleteProject(bbProject, true)
+        }
+
+        bbProject = bb.createProject(projectName, projectKey)
+        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
+
+
+        when: "Setting default branch to non standard value"
+        bbRepo.defaultBranch = branchName
+
+        then: "Expected default branch should be returned by API"
+        assert bbRepo.defaultBranchName == branchName
+
+        when: "Creating a new file"
+        BitbucketCommit createFileCommit = bbRepo.createFile("README.md", branchName, expectedFileText, "Initial Commit" + new Date().toString())
+
+        then: "The new commit should be created in the right branch, with the right commit msg and the file should retrievable with the correct content"
+        assert createFileCommit.branchName == branchName : "New commit not performed in the right branch"
+        assert createFileCommit.message.contains("Initial Commit") : "New commit got the wrong msg"
+        assert bbRepo.getFileContent("README.md").strip()  == expectedFileText.strip() : "Retrieving the file with just a name failed"
+        assert bbRepo.getFileContent("README.md", branchName).strip()  == expectedFileText.strip() : "Retrieving the file with name and branch name failed"
+        assert bbRepo.getFileContent("README.md", null, createFileCommit.id).strip()  == expectedFileText.strip() : "Retrieving the file with name and commit id failed"
+
+
+        when:"Creating a new file with an existing file name"
+        bbRepo.createFile("README.md", branchName, expectedFileText + "123", "Initial Commit" + new Date().toString())
+
+        then: "An exception should be thrown"
+        Exception e = thrown(Exception)
+        e.message.contains( "could not be created because it already exists")
+        log.info("\tCreation of file tested successfully")
+
+
+        when: "Updating an existing file"
+
+        expectedFileText = expectedFileText + "\n\nUpdated ${new Date()} \n\n ---- \n"
+        BitbucketCommit updateFileCommit =  bbRepo.updateFile("README.md", branchName, expectedFileText, "Updating existing file")
+
+        then: "The new commit should be created in the right branch, with the right commit msg and the file should retrievable with the updated content"
+        assert updateFileCommit.branchName == branchName : "New commit not performed in the right branch"
+        assert updateFileCommit.message.contains("Updating existing file") : "New commit got the wrong msg"
+        assert bbRepo.getFileContent("README.md").strip()  == expectedFileText.strip() : "Retrieving the file with just a name failed"
+        assert bbRepo.getFileContent("README.md", branchName).strip()  == expectedFileText.strip(): "Retrieving the file with name and branch name failed"
+        assert bbRepo.getFileContent("README.md", null, updateFileCommit.id).strip() == expectedFileText.strip() : "Retrieving the file with name and commit id failed"
+
+
+        when: "Updating a non existent file"
+        bbRepo.updateFile("NonExistentFile.md", branchName, "Some content", "A commit msg")
+
+        then: "An exception should be thrown"
+        e = thrown(Exception)
+        e.message.contains( "could not be edited")
+        log.info("\tUpdate of file tested successfully")
+
+
+        when:"Prepending a file"
+        expectedFileText = "## A new heading\n\n" + expectedFileText
+
+        assert bbRepo.prependFile("README.md", branchName, "## A new heading\n\n", "Added a heading")
+
+        then: "The start of the file should be changed"
+        assert bbRepo.getFileContent("README.md").strip()  == expectedFileText.strip()
+        log.info("\tPrepend of file tested successfully")
+
+        when: "Appending a file"
+        expectedFileText = expectedFileText + "\n\n\t A new tail"
+        assert bbRepo.appendFile("README.md", branchName,  "\n\n\t A new tail", "Added a tail")
+
+        then:"The end of the file should be changed, and the REPO should have two new commits"
+        assert bbRepo.getFileContent("README.md").endsWith("A new tail")
+        assert bbRepo.getCommits(100).message.containsAll(["Added a tail", "Added a heading"])
+        log.info("\tAppend of file tested successfully")
     }
 
     def "Test markdown generation"() {
 
         setup:
-        BitbucketInstanceManagerRest bb = setupBb()
+        String projectName = "Markdown Tests"
+        String projectKey = "MD"
+        String repoName = "MD Tests"
 
-
-        /*
-        bb.getProjects().each {
-            bb.deleteProject(it, true)
-        }
-        BitbucketProject sampleProject = bb.createProject("Sample Project", "SMP")
-        BitbucketRepo sampleRepo = bb.createRepo(sampleProject, BitbucketInstanceManagerRestSpec.simpleName)
-
-        File localGitRepoDir = setupLocalGitRepo()
-        assert bb.pushToRepo(localGitRepoDir, sampleRepo, true)
-
-
-         */
-
-
-
-
-        File localGitRepoDir = new File("/Users/anders/Downloads/RepoTemp2")
-        BitbucketRepo sampleRepo = bb.getRepo("SMP", "VSCODE")
-
-
+        BitbucketRepo sampleRepo = setupRepo(projectName, projectKey, repoName)
+        BitbucketInstanceManagerRest bb = sampleRepo.parentObject as BitbucketInstanceManagerRest
 
         ArrayList<BitbucketCommit> commits = sampleRepo.getCommits(100)
 
         //ArrayList<Map> branches = commits.collect {[id: it.displayId, "branches" : it.branches]}
-        ArrayList<String> changesMd = commits.collect { it.collect {it.toMarkdown()} }.flatten()
+        ArrayList<String> changesMd = commits.collect { it.collect { it.toMarkdown() } }.flatten()
 
         //File targetDir = new File("target").getAbsoluteFile()
         //targetDir.mkdir()
@@ -154,15 +403,12 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         File mDFile = new File(localGitRepoDir, "changes.md")
         mDFile.createNewFile()
         mDFile.text = changesMd.join("\n\n---\n\n\n") //BitbucketChange.markdownHeader + changesMd.take(5).join("\n") + BitbucketChange.markdownFooter
-        bb.addAndCommit(localGitRepoDir, "Testing Markdown", mDFile.name, "Spock", "spock@starship.enterprise")
-        bb.pushToRepo(localGitRepoDir, sampleRepo)
-
-
+        //bb.addAndCommit(localGitRepoDir, "Testing Markdown", mDFile.name, "Spock", "spock@starship.enterprise")
+        //bb.pushToRepo(localGitRepoDir, sampleRepo)
 
 
         then:
         true
-
 
 
     }

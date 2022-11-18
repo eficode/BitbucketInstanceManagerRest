@@ -31,8 +31,6 @@ trait BitbucketJsonEntity {
     }
 
 
-
-
      static ArrayList<BitbucketJsonEntity> fromJson(String rawJson, Class clazz, Object parent) {
 
         Type type
