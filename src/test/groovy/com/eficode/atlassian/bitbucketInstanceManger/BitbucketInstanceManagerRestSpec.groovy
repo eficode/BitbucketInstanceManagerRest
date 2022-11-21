@@ -106,6 +106,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
      */
     File setupLocalGitRepo(String repoUrl = "https://github.com/microsoft/vscode.git") {
 
+        repoUrl = "https://github.com/eficode/BitbucketInstanceManagerRest.git"
 
         log.info("Setting up local git repo")
         if (repoCacheDir.listFiles().size() == 0) {
@@ -151,8 +152,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         assert bb.pushToRepo(localGitRepoDir, sampleRepo, true)
 
         //If master branch not found, presume main is the default branch
-        if (! sampleRepo.findBranches("master").findAll {it.displayId == "master"}) {
-            assert sampleRepo.setDefaultBranch("main") : "Error setting default branch to main"
+        if (!sampleRepo.findBranches("master").findAll { it.displayId == "master" }) {
+            assert sampleRepo.setDefaultBranch("main"): "Error setting default branch to main"
         }
 
         return sampleRepo
@@ -200,9 +201,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketInstanceManagerRest bb = sampleRepo.parentObject as BitbucketInstanceManagerRest
 
 
-
         when:
-        BitbucketCommit createFileCommit = sampleRepo.createFile(fileName, branchName, "Initical commit of file in branch: $branchName, on ${new Date()}" , "Initial commit of $fileName")
+        BitbucketCommit createFileCommit = sampleRepo.createFile(fileName, branchName, "Initical commit of file in branch: $branchName, on ${new Date()}", "Initial commit of $fileName")
 
         then:
         createFileCommit != null
@@ -355,10 +355,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         with(bbRepo.getAllBranches()) { branches ->
             branches.every {
                 it.isValid()
-            }
-                    &&
-                    branches.latestCommit.unique().size() == 1
-                    &&
+            } &&
+                    branches.latestCommit.unique().size() == 1 &&
                     branches.latestChangeset.unique().size() == 1
 
         }
@@ -368,17 +366,14 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         assert bbRepo.getAllBranches().findAll { it.isDefault }.size() == 1: "Library returned unexpected amount of default branches."
 
 
-
         when: "Committing a file update in a branch, and refreshing the branch"
         BitbucketCommit featureCommit = bbRepo.appendFile("README.md", newBranchWithNewType.displayId, "\n\nA commit made in the \"${newBranchWithNewType.id}.\" branch", "Committing to \"${newBranchWithNewType.id}\" branch")
         newBranchWithNewType = newBranchWithNewType.refreshInfo()
 
         then: "The branch should have the new latestCommit"
-        assert featureCommit.branch.id == newBranchWithNewType.id : "The API says the commit belongs to the incorrect branch"
-        assert featureCommit.branch.latestCommit == featureCommit.id : "The API says the last commit in the branch is the wrong one "
-        assert newBranchWithNewType.latestCommit == featureCommit.id : "The library didn't return the correct latestCommit after refreshing the branch object"
-
-
+        assert featureCommit.branch.id == newBranchWithNewType.id: "The API says the commit belongs to the incorrect branch"
+        assert featureCommit.branch.latestCommit == featureCommit.id: "The API says the last commit in the branch is the wrong one "
+        assert newBranchWithNewType.latestCommit == featureCommit.id: "The library didn't return the correct latestCommit after refreshing the branch object"
 
 
     }
@@ -664,9 +659,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         JSONArray projectsRaw = responseRaw.getObject().get("values") as JSONArray
 
 
-
         bb.getProject(projectsRaw.first().key as String).id.toLong() == projectsRaw.first().id
-        bb.getProjects().key.containsAll(projectsRaw.collect {it.key})
+        bb.getProjects().key.containsAll(projectsRaw.collect { it.key })
 
 
         when: "Deleting projects"

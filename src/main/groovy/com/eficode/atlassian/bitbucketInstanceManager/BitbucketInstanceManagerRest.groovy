@@ -862,7 +862,7 @@ class BitbucketInstanceManagerRest {
                 //Remove all but id and displayId, as getCommit and getCommits return different amount of info
                 commit.parents.each { parentMap ->
                     parentMap.removeAll { key, value ->
-                        !(key as String in ["id", "displayId"])
+                        !((key as String) in ["id", "displayId"])
                     }
                 }
 
