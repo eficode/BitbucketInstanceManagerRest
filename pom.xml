@@ -205,6 +205,13 @@
         </plugins>
     </build>
 
+    <repositories>
+        <repository>
+            <id>eficode-github-DevStack</id>
+            <url>https://github.com/eficode/DevStack/raw/packages/repository/</url>
+        </repository>
+    </repositories>
+
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
