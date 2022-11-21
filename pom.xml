@@ -25,6 +25,11 @@
                     <groupId>com.eficode.shaded</groupId>
                     <artifactId>devstack</artifactId>
                 </exclusion>
+                <exclusion>
+                    <!-- groovy-yaml is not available before v3 -->
+                    <groupId>org.codehaus.groovy</groupId>
+                    <artifactId>groovy-yaml</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
 
