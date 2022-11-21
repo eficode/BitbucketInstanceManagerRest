@@ -1,4 +1,11 @@
 
+resource "aws_iam_instance_profile" "default_profile" {
+
+  name = "${var.tags.useCase}-${var.tags.owner}-instance-profile"
+  role = aws_iam_role.default_instance_role.name
+
+}
+
 resource "aws_iam_role" "default_instance_role" {
   name = "${var.tags.useCase}-${var.tags.owner}-instance-role"
 
@@ -19,13 +26,3 @@ resource "aws_iam_role" "default_instance_role" {
   })
 
 }
-
-
-resource "aws_iam_instance_profile" "default_profile" {
-
-  name = "${var.tags.useCase}-${var.tags.owner}-instance-profile"
-  role = aws_iam_role.default_instance_role.name
-
-}
-
-

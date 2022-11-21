@@ -42,7 +42,7 @@ EOT
 
 apt upgrade -y && apt-get install -y locales htop nano inetutils-ping net-tools && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 
-apt install -y ca-certificates curl gnupg lsb-release
+apt install -y ca-certificates curl gnupg lsb-release net-tools
 
 mkdir -p /etc/apt/keyrings && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
 echo \

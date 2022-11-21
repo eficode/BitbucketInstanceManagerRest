@@ -42,6 +42,9 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     static String baseUrl = "http://bitbucket.domain.se:7990"
 
     @Shared
+    static String dockerRemoteHost = "https://docker.domain.se:2376"
+
+    @Shared
     static String bitbucketLicensePath = "src/test/resources/bitbucket/licenses/bitbucketLicense"
 
     @Shared
@@ -57,7 +60,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     Path projectRoot = new File("").absoluteFile.toPath()
 
     @Shared
-    BitbucketContainer bitbucketContainer = new BitbucketContainer(baseUrl)
+    BitbucketContainer bitbucketContainer
 
     @Shared
     File mainTempDir = Files.createTempDirectory(BitbucketInstanceManagerRestSpec.simpleName).toFile().absoluteFile
@@ -69,8 +72,19 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     // run once before the first feature method
     def setupSpec() {
 
+
+
+        if (dockerRemoteHost) {
+            bitbucketContainer = new BitbucketContainer(baseUrl, dockerRemoteHost, "src/test/resources/Environments/dockerCert/")
+            bitbucketContainer.jvmMaxRam = 12000
+        } else {
+            bitbucketContainer = new BitbucketContainer(baseUrl)
+        }
+
         unirestInstance.config().defaultBaseUrl(baseUrl).setDefaultBasicAuth(restAdmin, restPw).enableCookieManagement(false)
         bitbucketContainer.containerName = bitbucketContainer.extractDomainFromUrl(baseUrl)
+
+
 
         repoCacheDir.mkdirs()
     }
@@ -177,12 +191,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketInstanceManagerRest bb = setupBb()
 
 
-        //bb.setApplicationProperties(bitbucketLicense, "Bitbucket", baseUrl)
+        bb.setApplicationProperties(bitbucketLicense, instanceDisplayName, baseUrl)
 
         then:
         bb.status == "RUNNING"
         bb.license.strip() == bitbucketLicense.strip()
-        bb.applicationProperties.displayName == instanceDisplayName
 
 
     }

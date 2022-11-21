@@ -18,18 +18,28 @@ variable "aws_credentials" {
     "secret_key" = ""
     "account" = ""
   }
-  
+
+}
+
+
+
+
+variable "trusted-external-ips" {
+  description = "These IPs will have acces to the exposed ports"
+  type = set(string)
+  default = ["1.2.3.4/32"]
+
 }
 
 
 variable "dockerServerCert" {
   type = map(string)
   default = {
-    "tlscacert" = "../../resources/dockerCert/ca.pem"
-    "tlscert" = "../../resources/dockerCert/server-cert.pem"
-    "tlskey" = "../../resources/dockerCert/server-key.pem"
+    "tlscacert" = "../dockerCert/ca.pem"
+    "tlscert" = "../dockerCert/server-cert.pem"
+    "tlskey" = "../dockerCert/server-key.pem"
   }
-  
+
 }
 
 variable "ssh-public-key-local-path" {
@@ -37,53 +47,45 @@ variable "ssh-public-key-local-path" {
   default = "~/.ssh/id_rsa.pub"
 }
 
-
-variable "trusted-external-ips" {
-  description = "These IPs will have acces to the exposed ports"
-  type = set(string)
-  default = ["1.2.3.4/32"]
-  
-}
-
-
 variable "ec2-username" {
   type    = string
   default = "ubuntu"
 }
 
 variable "ingress_rules_from_trusted" {
-    description = "This will expose the coresponding ports to the internet, but limited to trusted-external-ips"
-    type = list(object({
-      port   = number
-      protocol    = string
-      description = string
-    }))
-    default     = [
-        {
-          port   = 22
-          protocol    = "tcp"
-          description = "ssh access"
-        },
-        {
-          port   =  80
-          protocol    = "tcp"
-          description = "HTTP port 80"
-        },
-        {
-          port   =  8080
-          protocol    = "tcp"
-          description = "HTTP port 8080"
-        }
-        {
-          port   =  2376
-          protocol    = "tcp"
-          description = "Docker port"
-        },
-         {
-          port   =  7990
-          protocol    = "tcp"
-          description = "Bitbucket port"
-        }
-    ]
+  description = "This will expose the corresponding ports to the internet, but limited to trusted-external-ips"
+  type = list(object({
+    port   = number
+    protocol    = string
+    description = string
+  }))
+  default     = [
+
+    {
+      port   =  8080
+      protocol    = "tcp"
+      description = "JIRA"
+    },
+    {
+      port   =  22
+      protocol    = "tcp"
+      description = "SSH"
+    },
+    {
+      port   =  7990
+      protocol    = "tcp"
+      description = "Bitbucket"
+    },
+    {
+      port   =  80
+      protocol    = "tcp"
+      description = "HTTP"
+    },
+    {
+      port   =  2376
+      protocol    = "tcp"
+      description = "Docker port"
+    }
+  ]
 }
 
