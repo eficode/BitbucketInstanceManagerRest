@@ -1,11 +1,9 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kong.unirest.Cookie
 import kong.unirest.Cookies
-import kong.unirest.HttpRequestMultiPart
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
 import kong.unirest.MultipartBody
@@ -628,7 +626,7 @@ class BitbucketInstanceManagerRest {
         mainBranch = mainBranch.takeRight(mainBranch.length() - mainBranch.lastIndexOf("/") - 1)
         log.debug("\t\tMain Branch:" + mainBranch)
 
-        log.info("\tChecking out main branch" + mainBranch)
+        log.info("\tChecking out main branch: " + mainBranch)
         //Reopen repo
         git = Git.open(outputDir)
         //Checkout main branch
@@ -730,6 +728,96 @@ class BitbucketInstanceManagerRest {
 
 
             return out
+
+        }
+
+
+    }
+
+
+    class BitbucketBranch implements BitbucketJsonEntity {
+
+
+        String id
+        String displayId
+        String type
+        String latestCommit
+        String latestChangeset
+        boolean isDefault
+        BitbucketRepo repo
+
+        boolean isValid() {
+
+            return id && latestCommit && latestChangeset && repo && (type == "BRANCH")
+        }
+
+        /**
+         * Returns the branch type
+         * @return ex: hotfix, feature, etc
+         */
+        String getBranchType() {
+
+            if (displayId.contains("/")) {
+                return displayId.replaceFirst(/\/.*$/, "")
+            }
+            else {
+                return ""
+            }
+
+        }
+
+
+        /**
+         * Quries the API for new data and returnes a new object with that data.
+         * @return
+         */
+        BitbucketBranch refreshInfo() {
+            return getBranch(displayId, repo)
+        }
+
+        static BitbucketBranch getBranch(String branchName, BitbucketRepo repo) {
+
+            ArrayList<BitbucketBranch> matches = findBranches(branchName, 25, repo)
+
+            assert matches.size() == 1 : "Error getting branch, ID matches ${matches.size()} branches. Name: $branchName, Repo: ${repo.name}"
+
+
+            return matches.first()
+        }
+
+        static ArrayList<BitbucketBranch> getAllBranches(BitbucketRepo repo, long maxBranches = 25) {
+
+            return findBranches("", maxBranches, repo)
+        }
+
+        static ArrayList<BitbucketBranch> findBranches(String filter = "", long maxMatches = 25, BitbucketRepo repo) {
+
+            String url = "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.repositorySlug}/branches"
+
+            if (filter) {
+                url += "?filterText=" + filter
+            }
+
+            BitbucketInstanceManagerRest instance = repo.parentObject as BitbucketInstanceManagerRest
+            ArrayList rawResponse = instance.getJsonPages(url,maxMatches)
+
+
+            ArrayList<BitbucketBranch> branches = fromRaw(rawResponse, repo)
+            return branches
+
+
+        }
+
+        static ArrayList<BitbucketBranch> fromRaw(ArrayList rawBranches, BitbucketRepo repo) {
+
+            ArrayList<BitbucketBranch> branches = fromJson(rawBranches.toString(),BitbucketBranch, repo.parentObject)
+
+            branches.each {branch ->
+                branch.repo = repo
+            }
+
+            return branches
+
 
         }
 
@@ -897,22 +985,23 @@ class BitbucketInstanceManagerRest {
         }
 
 
-        String getBranchId() {
-            return branchRaw.id
-        }
+        /**
+         * Get the branch that the commit was made in
+         * @return
+         */
+        BitbucketBranch getBranch() {
 
-        String getBranchName() {
-            return branchRaw.displayId
-        }
-
-        Map getBranchRaw() {
 
             String url = "/rest/branch-utils/latest/projects/${repository.project.key}/repos/${repository.slug}/branches/info/${displayId}"
 
-            ArrayList<Map> branches = jsonPagesToGenerics(getJsonPages(newUnirest, url, 1))
-            assert branches.size() == 1: "Error finding branch for Commit ${displayId}, API returned ${branches.size()} branches"
+            ArrayList branchesRaw = getJsonPages(newUnirest, url, 1)
+            assert branchesRaw.size() == 1: "Error finding branch for Commit ${displayId}, API returned ${branchesRaw.size()} branches"
 
-            return branches.first() as Map
+            //The raw output is not complete, thus the branch has to get fetched again from another Endpoint
+            return BitbucketBranch.getBranch(branchesRaw.first().displayId, repository)
+
+
+            //BitbucketBranch.fromRaw(branchesRaw, repository).first()
         }
 
 
@@ -990,43 +1079,77 @@ class BitbucketInstanceManagerRest {
             return response.status == 204
         }
 
-        String getDefaultBranchName() {
-            return defaultBranchRaw.displayId
-        }
 
-        /**
-         * Returns ID of default branch, ex: refs/heads/master
-         * @return
-         */
-        String getDefaultBranchId() {
-            return defaultBranchRaw.id
-        }
-
-        Map getDefaultBranchRaw() {
+        BitbucketBranch getDefaultBranch() {
 
             ArrayList rawOut = getJsonPages("/rest/api/latest/projects/${project.key}/repos/${slug}/default-branch", 1, false)
             assert rawOut.size() == 1: "Error getting default branch for repo $name, API returned:" + rawOut
-            return jsonPagesToGenerics(rawOut.first()) as Map
+
+
+            return BitbucketBranch.fromRaw(rawOut, this).first()
 
         }
 
 
-        Continue here
-        boolean createBranch(String branchName) {
+        /**
+         * Create a new branch
+         * @param branchName Name of new branch
+         * @param branchFrom ex: refs/heads/master, master,
+         * @param branchType (Optional) ex: bugfix, hotfix, feature
+         *              If branchType doesnt already exist in repo, it will be created
+         * @return Full branch name: ex:  refs/heads/new-branch, refs/heads/hotfix/new-hotfix
+         */
+        BitbucketBranch createBranch(String branchName,String branchFrom, String branchType = null) {
 
             UnirestInstance unirest = newUnirest
 
             Map body = [
-                    //empty : false,
-                    name: branchName
+
+                    name: (branchType ? branchType +"/" : "") + branchName,
+                    startPoint : branchFrom
             ]
 
             HttpResponse<JsonNode> rawResponse = unirest.post("/rest/branch-utils/latest/projects/${projectKey}/repos/${repositorySlug}/branches").body(body).contentType("application/json").asJson()
+            Map rawOut = jsonPagesToGenerics(rawResponse.body)
 
+            if (rawOut.containsKey("errors")) {
+                throw new Exception(rawOut.errors.collect { it?.message }?.join(", "))
+            }
+
+            assert rawResponse.status == 201 : "API returned unexpected output when creating new branch:" + rawResponse?.body?.toString()
 
             unirest.shutDown()
 
-            return null
+            return BitbucketBranch.fromRaw([rawResponse.body.toString()], this).first()
+
+        }
+
+
+
+        ArrayList<BitbucketBranch> getAllBranches(long maxBranches = 25) {
+
+            return BitbucketBranch.getAllBranches(this, maxBranches)
+        }
+
+        ArrayList<BitbucketBranch> findBranches(String filter = "", long maxMatches = 25) {
+
+            return BitbucketBranch.findBranches(filter, maxMatches, this)
+            /*
+            String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/branches"
+
+            if (filter) {
+                url += "?filterText=" + filter
+            }
+
+            ArrayList rawResponse = getJsonPages(url,maxMatches)
+
+
+            ArrayList<BitbucketBranch> branches = BitbucketBranch.fromRaw(rawResponse, this)
+            return branches
+
+             */
+
+
         }
 
         /** --- Get commits --- **/

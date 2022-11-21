@@ -17,18 +17,21 @@ trait BitbucketJsonEntity {
 
     static Gson objectMapper = new Gson()
 
+    /*
 
     //An array of maps
     static ArrayList<BitbucketJsonEntity> fromJson(ArrayList<Map> rawJson, BitbucketInstanceManagerRest parent) {
 
-        return fromJson(JsonOutput.toJson(rawJson), parent)
+        return fromJson(JsonOutput.toJson(rawJson.toString()) as String, parent)
     }
     //A single map
     static ArrayList<BitbucketJsonEntity> fromJson(Map rawJson, BitbucketInstanceManagerRest parent) {
 
 
-        return fromJson(JsonOutput.toJson(rawJson), parent)
+        return fromJson(JsonOutput.toJson(rawJson) as String, parent)
     }
+
+     */
 
 
      static ArrayList<BitbucketJsonEntity> fromJson(String rawJson, Class clazz, Object parent) {

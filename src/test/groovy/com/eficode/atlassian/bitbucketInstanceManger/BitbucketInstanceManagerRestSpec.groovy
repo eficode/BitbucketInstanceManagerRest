@@ -5,18 +5,21 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketCommit as BitbucketCommit
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketChange as BitbucketChange
+import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch as BitbucketBranch
 import com.eficode.devstack.container.impl.BitbucketContainer
 import groovy.test.GroovyAssert
+import kong.unirest.JsonNode
 import kong.unirest.Unirest
 import kong.unirest.UnirestInstance
+import kong.unirest.json.JSONArray
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
-import org.eclipse.jgit.api.Git
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import spock.lang.Ignore
 import spock.lang.Shared
 import spock.lang.Specification
+import unirest.shaded.com.google.gson.JsonObject
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -147,6 +150,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         File localGitRepoDir = setupLocalGitRepo()
         assert bb.pushToRepo(localGitRepoDir, sampleRepo, true)
 
+        //If master branch not found, presume main is the default branch
+        if (! sampleRepo.findBranches("master").findAll {it.displayId == "master"}) {
+            assert sampleRepo.setDefaultBranch("main") : "Error setting default branch to main"
+        }
+
         return sampleRepo
     }
 
@@ -185,21 +193,32 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         String projectName = "File update tests"
         String projectKey = "FU"
         String repoName = "Updating files"
+        String branchName = "master"
+        String fileName = "NewFile${System.currentTimeMillis().toString()[-3..-1]}.md"
 
         BitbucketRepo sampleRepo = setupRepo(projectName, projectKey, repoName)
         BitbucketInstanceManagerRest bb = sampleRepo.parentObject as BitbucketInstanceManagerRest
 
-        BitbucketCommit lastCommitAtSetup = sampleRepo.getLastCommitInBranch("main")
 
 
         when:
-        BitbucketCommit updateFileCommit = sampleRepo.updateFile("README.md", "main", "An updated to the file ${new Date()}", "A Commit MSG" + new Date().toString())
+        BitbucketCommit createFileCommit = sampleRepo.createFile(fileName, branchName, "Initical commit of file in branch: $branchName, on ${new Date()}" , "Initial commit of $fileName")
+
+        then:
+        createFileCommit != null
+        createFileCommit.message.startsWith("Initial commit")
+        createFileCommit.branch.displayId == branchName
+
+        when:
+        BitbucketCommit updateFileCommit = sampleRepo.updateFile(fileName, branchName, "An updated to the file $fileName on ${new Date()}", "A Commit MSG" + new Date().toString())
+
 
         then:
         updateFileCommit != null
         updateFileCommit.message.startsWith("A Commit MSG")
-        updateFileCommit.branchName == "main"
-        updateFileCommit.parents.first().id == lastCommitAtSetup.id
+        updateFileCommit.branch.displayId == branchName
+        updateFileCommit.parents.first().id == createFileCommit.id
+        sampleRepo.getFileContent(fileName, branchName).contains("An updated to the file")
 
 
     }
@@ -226,39 +245,39 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         expect:
         //Reading the default settings of a newly created repo
-        assert bbRepo.defaultMergeStrategy == "no-ff" : "The new repo got an unexpected default merge strategy"
-        assert bbRepo.enabledMergeStrategies == ["no-ff"] : "The new repo got an unexpected enabled merge strategies"
-        assert bbRepo.mergeStrategyIsInherited() : "The new repo started with repo-local strategies"
+        assert bbRepo.defaultMergeStrategy == "no-ff": "The new repo got an unexpected default merge strategy"
+        assert bbRepo.enabledMergeStrategies == ["no-ff"]: "The new repo got an unexpected enabled merge strategies"
+        assert bbRepo.mergeStrategyIsInherited(): "The new repo started with repo-local strategies"
 
 
         //Updating repo with new settings, and reading them back
-        assert bbRepo.setEnabledMergeStrategies("rebase-no-ff", ["ff-only", "rebase-no-ff"]) : "Error setting Merge Strategies "
+        assert bbRepo.setEnabledMergeStrategies("rebase-no-ff", ["ff-only", "rebase-no-ff"]): "Error setting Merge Strategies "
 
-        assert bbRepo.defaultMergeStrategy == "rebase-no-ff" : "API does not report the expected default merge strategy after setting it"
-        assert bbRepo.enabledMergeStrategies == ["ff-only", "rebase-no-ff"] : "API does not report the expected  merge strategies after setting them"
-        assert ! bbRepo.mergeStrategyIsInherited() : "After setting repo-local merge strategies, they are still inherited from project"
+        assert bbRepo.defaultMergeStrategy == "rebase-no-ff": "API does not report the expected default merge strategy after setting it"
+        assert bbRepo.enabledMergeStrategies == ["ff-only", "rebase-no-ff"]: "API does not report the expected  merge strategies after setting them"
+        assert !bbRepo.mergeStrategyIsInherited(): "After setting repo-local merge strategies, they are still inherited from project"
 
 
-        assert bbRepo.enableAllMergeStrategies() : "Error enabling all Merge Strategies"
-        assert bbRepo.defaultMergeStrategy == "no-ff" : "Enabling all merge strategies, ended up setting an unexpected default strategy"
+        assert bbRepo.enableAllMergeStrategies(): "Error enabling all Merge Strategies"
+        assert bbRepo.defaultMergeStrategy == "no-ff": "Enabling all merge strategies, ended up setting an unexpected default strategy"
 
-        assert bbRepo.enableAllMergeStrategies("ff-only") : "Error enabling all Merge Strategies"
+        assert bbRepo.enableAllMergeStrategies("ff-only"): "Error enabling all Merge Strategies"
         assert bbRepo.defaultMergeStrategy == "ff-only"
 
 
         //Giving the wrong input
-        GroovyAssert.shouldFail {bbRepo.setEnabledMergeStrategies("wrong-default" , ["wrong-default", "ff-only"]) }
-        GroovyAssert.shouldFail {bbRepo.setEnabledMergeStrategies("ff-only" , ["wrong-strategy", "ff-only"]) }
+        GroovyAssert.shouldFail { bbRepo.setEnabledMergeStrategies("wrong-default", ["wrong-default", "ff-only"]) }
+        GroovyAssert.shouldFail { bbRepo.setEnabledMergeStrategies("ff-only", ["wrong-strategy", "ff-only"]) }
 
     }
 
 
+    @Ignore
     def "Test PR CRUD"() {
-
-        Continue here
 
 
         setup:
+        //TODO Continue here, broken state
         log.info("Testing Pull Request Config CRUD actions using Bitbucket API")
         String projectName = "Pull Request Actions"
         String projectKey = "PRA"
@@ -290,6 +309,80 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
     }
 
+
+    def "Test branch CRUD"() {
+
+        log.info("Testing Branch CRUD actions")
+        String projectName = "Branch Actions"
+        String projectKey = "BRA"
+        String repoName = "CRUDing Branches"
+
+        BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
+        BitbucketProject bbProject = bb.getProject(projectKey)
+
+        if (bbProject) {
+            bb.deleteProject(bbProject, true)
+        }
+
+        bbProject = bb.createProject(projectName, projectKey)
+        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
+
+        //Repo must contain something before branches can be created
+        bbRepo.createFile("README.md", "master", "Initial content ${new Date()}", "Initial commit")
+        String originalDefaultBranch = bbRepo.defaultBranch.displayId
+
+
+        when: "Creating new branches"
+
+
+        assert bbRepo.createBranch("a-branch-from-master", "master").id == "refs/heads/a-branch-from-master": "Error creating a branch from master"
+        assert bbRepo.createBranch("a-feature-branch", "master", "feature").id == "refs/heads/feature/a-feature-branch": "Error creating a feature branch"
+        BitbucketBranch newBranchWithNewType = bbRepo.createBranch("a-new-branch-type", "master", "new-type")
+
+
+        then: "They should all be valid, get the correct branch types and only one should be default"
+        with(newBranchWithNewType) {
+            assert id == "refs/heads/new-type/a-new-branch-type": "Error creating a branch with a new type"
+            assert branchType == "new-type"
+            assert it.isValid()
+        }
+
+
+        with(bbRepo.findBranches("a-branch-from-master").first()) {
+            branchType == ""
+        }
+
+        with(bbRepo.getAllBranches()) { branches ->
+            branches.every {
+                it.isValid()
+            }
+                    &&
+                    branches.latestCommit.unique().size() == 1
+                    &&
+                    branches.latestChangeset.unique().size() == 1
+
+        }
+
+        assert bbRepo.findBranches("a-branch-from-master").size() == 1: "Error finding a newly created branch"
+        assert bbRepo.getAllBranches().size() == 4: "Error finding all the expected branched"
+        assert bbRepo.getAllBranches().findAll { it.isDefault }.size() == 1: "Library returned unexpected amount of default branches."
+
+
+
+        when: "Committing a file update in a branch, and refreshing the branch"
+        BitbucketCommit featureCommit = bbRepo.appendFile("README.md", newBranchWithNewType.displayId, "\n\nA commit made in the \"${newBranchWithNewType.id}.\" branch", "Committing to \"${newBranchWithNewType.id}\" branch")
+        newBranchWithNewType = newBranchWithNewType.refreshInfo()
+
+        then: "The branch should have the new latestCommit"
+        assert featureCommit.branch.id == newBranchWithNewType.id : "The API says the commit belongs to the incorrect branch"
+        assert featureCommit.branch.latestCommit == featureCommit.id : "The API says the last commit in the branch is the wrong one "
+        assert newBranchWithNewType.latestCommit == featureCommit.id : "The library didn't return the correct latestCommit after refreshing the branch object"
+
+
+
+
+    }
+
     def "Test file crud using Bitbucket API"() {
 
         setup:
@@ -316,39 +409,39 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         bbRepo.defaultBranch = branchName
 
         then: "Expected default branch should be returned by API"
-        assert bbRepo.defaultBranchName == branchName
+        assert bbRepo.defaultBranch.displayId == branchName
 
         when: "Creating a new file"
         BitbucketCommit createFileCommit = bbRepo.createFile("README.md", branchName, expectedFileText, "Initial Commit" + new Date().toString())
 
         then: "The new commit should be created in the right branch, with the right commit msg and the file should retrievable with the correct content"
-        assert createFileCommit.branchName == branchName : "New commit not performed in the right branch"
-        assert createFileCommit.message.contains("Initial Commit") : "New commit got the wrong msg"
-        assert bbRepo.getFileContent("README.md").strip()  == expectedFileText.strip() : "Retrieving the file with just a name failed"
-        assert bbRepo.getFileContent("README.md", branchName).strip()  == expectedFileText.strip() : "Retrieving the file with name and branch name failed"
-        assert bbRepo.getFileContent("README.md", null, createFileCommit.id).strip()  == expectedFileText.strip() : "Retrieving the file with name and commit id failed"
+        assert createFileCommit.branch.displayId == branchName: "New commit not performed in the right branch"
+        assert createFileCommit.message.contains("Initial Commit"): "New commit got the wrong msg"
+        assert bbRepo.getFileContent("README.md").strip() == expectedFileText.strip(): "Retrieving the file with just a name failed"
+        assert bbRepo.getFileContent("README.md", branchName).strip() == expectedFileText.strip(): "Retrieving the file with name and branch name failed"
+        assert bbRepo.getFileContent("README.md", null, createFileCommit.id).strip() == expectedFileText.strip(): "Retrieving the file with name and commit id failed"
 
 
-        when:"Creating a new file with an existing file name"
+        when: "Creating a new file with an existing file name"
         bbRepo.createFile("README.md", branchName, expectedFileText + "123", "Initial Commit" + new Date().toString())
 
         then: "An exception should be thrown"
         Exception e = thrown(Exception)
-        e.message.contains( "could not be created because it already exists")
+        e.message.contains("could not be created because it already exists")
         log.info("\tCreation of file tested successfully")
 
 
         when: "Updating an existing file"
 
         expectedFileText = expectedFileText + "\n\nUpdated ${new Date()} \n\n ---- \n"
-        BitbucketCommit updateFileCommit =  bbRepo.updateFile("README.md", branchName, expectedFileText, "Updating existing file")
+        BitbucketCommit updateFileCommit = bbRepo.updateFile("README.md", branchName, expectedFileText, "Updating existing file")
 
         then: "The new commit should be created in the right branch, with the right commit msg and the file should retrievable with the updated content"
-        assert updateFileCommit.branchName == branchName : "New commit not performed in the right branch"
-        assert updateFileCommit.message.contains("Updating existing file") : "New commit got the wrong msg"
-        assert bbRepo.getFileContent("README.md").strip()  == expectedFileText.strip() : "Retrieving the file with just a name failed"
-        assert bbRepo.getFileContent("README.md", branchName).strip()  == expectedFileText.strip(): "Retrieving the file with name and branch name failed"
-        assert bbRepo.getFileContent("README.md", null, updateFileCommit.id).strip() == expectedFileText.strip() : "Retrieving the file with name and commit id failed"
+        assert updateFileCommit.branch.displayId == branchName: "New commit not performed in the right branch"
+        assert updateFileCommit.message.contains("Updating existing file"): "New commit got the wrong msg"
+        assert bbRepo.getFileContent("README.md").strip() == expectedFileText.strip(): "Retrieving the file with just a name failed"
+        assert bbRepo.getFileContent("README.md", branchName).strip() == expectedFileText.strip(): "Retrieving the file with name and branch name failed"
+        assert bbRepo.getFileContent("README.md", null, updateFileCommit.id).strip() == expectedFileText.strip(): "Retrieving the file with name and commit id failed"
 
 
         when: "Updating a non existent file"
@@ -356,62 +449,29 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then: "An exception should be thrown"
         e = thrown(Exception)
-        e.message.contains( "could not be edited")
+        e.message.contains("could not be edited")
         log.info("\tUpdate of file tested successfully")
 
 
-        when:"Prepending a file"
+        when: "Prepending a file"
         expectedFileText = "## A new heading\n\n" + expectedFileText
 
         assert bbRepo.prependFile("README.md", branchName, "## A new heading\n\n", "Added a heading")
 
         then: "The start of the file should be changed"
-        assert bbRepo.getFileContent("README.md").strip()  == expectedFileText.strip()
+        assert bbRepo.getFileContent("README.md").strip() == expectedFileText.strip()
         log.info("\tPrepend of file tested successfully")
 
         when: "Appending a file"
         expectedFileText = expectedFileText + "\n\n\t A new tail"
-        assert bbRepo.appendFile("README.md", branchName,  "\n\n\t A new tail", "Added a tail")
+        assert bbRepo.appendFile("README.md", branchName, "\n\n\t A new tail", "Added a tail")
 
-        then:"The end of the file should be changed, and the REPO should have two new commits"
+        then: "The end of the file should be changed, and the REPO should have two new commits"
         assert bbRepo.getFileContent("README.md").endsWith("A new tail")
         assert bbRepo.getCommits(100).message.containsAll(["Added a tail", "Added a heading"])
         log.info("\tAppend of file tested successfully")
     }
 
-    def "Test markdown generation"() {
-
-        setup:
-        String projectName = "Markdown Tests"
-        String projectKey = "MD"
-        String repoName = "MD Tests"
-
-        BitbucketRepo sampleRepo = setupRepo(projectName, projectKey, repoName)
-        BitbucketInstanceManagerRest bb = sampleRepo.parentObject as BitbucketInstanceManagerRest
-
-        ArrayList<BitbucketCommit> commits = sampleRepo.getCommits(100)
-
-        //ArrayList<Map> branches = commits.collect {[id: it.displayId, "branches" : it.branches]}
-        ArrayList<String> changesMd = commits.collect { it.collect { it.toMarkdown() } }.flatten()
-
-        //File targetDir = new File("target").getAbsoluteFile()
-        //targetDir.mkdir()
-
-
-        when:
-
-        File mDFile = new File(localGitRepoDir, "changes.md")
-        mDFile.createNewFile()
-        mDFile.text = changesMd.join("\n\n---\n\n\n") //BitbucketChange.markdownHeader + changesMd.take(5).join("\n") + BitbucketChange.markdownFooter
-        //bb.addAndCommit(localGitRepoDir, "Testing Markdown", mDFile.name, "Spock", "spock@starship.enterprise")
-        //bb.pushToRepo(localGitRepoDir, sampleRepo)
-
-
-        then:
-        true
-
-
-    }
 
     def "Test getFileNameTruncated"(String full, String parent, String name) {
 
@@ -480,9 +540,9 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
         when: "Getting all repo commits, and a subset of the commits"
-        ArrayList<BitbucketCommit> allCommits = sampleRepo.getCommits()
+        ArrayList<BitbucketCommit> allCommits = sampleRepo.getCommits(100)
 
-        ArrayList<BitbucketCommit> subsetCommits = sampleRepo.getCommits(allCommits[5].id, allCommits[0].id)
+        ArrayList<BitbucketCommit> subsetCommits = sampleRepo.getCommits(allCommits[5].id, allCommits[0].id, 100)
 
         then: "All commits should be more than subset, they should all be BitbucketCommit, the subset should not contain"
         allCommits.size() >= subsetCommits.size()
@@ -600,14 +660,13 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         !(newPubProject == newPrivProject)
 
         then: "Getting the raw data, it should match well with what the library returns"
-        ArrayList<Map> projectsRaw = unirestInstance.get("/rest/api/latest/projects").asObject(Map).body.get("values") as ArrayList<Map>
-        assert projectsRaw instanceof ArrayList
-        assert projectsRaw.first() instanceof Map
+        JsonNode responseRaw = unirestInstance.get("/rest/api/latest/projects").asJson().body
+        JSONArray projectsRaw = responseRaw.getObject().get("values") as JSONArray
 
-        BitbucketProject.fromJson(projectsRaw, bb).id == projectsRaw.collect { BitbucketProject.fromJson(it, bb) }.id.flatten() //Verify Converting singel project and list of projects return the same value
-        bb.getProjects().key.containsAll(BitbucketProject.fromJson(projectsRaw, bb).key)
+
+
         bb.getProject(projectsRaw.first().key as String).id.toLong() == projectsRaw.first().id
-        bb.getProjects().key.containsAll(projectsRaw.key)
+        bb.getProjects().key.containsAll(projectsRaw.collect {it.key})
 
 
         when: "Deleting projects"
