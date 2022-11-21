@@ -42,7 +42,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     static String baseUrl = "http://bitbucket.domain.se:7990"
 
     @Shared
-    static String bitbucketLicensePath = "src/test/testResources/bitbucket/licenses/bitbucketLicense"
+    static String bitbucketLicensePath = "src/test/resources/bitbucket/licenses/bitbucketLicense"
 
     @Shared
     static String restAdmin = "admin"
