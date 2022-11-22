@@ -11,6 +11,13 @@
     <packaging>jar</packaging>
 
 
+    <organization>
+        <name>Eficode</name>
+        <url>https://www.eficode.com/</url>
+    </organization>
+
+
+
     <dependencies>
 
 
@@ -101,6 +108,7 @@
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>true</filtering>
+
             </resource>
         </resources>
         <plugins>
