@@ -4,9 +4,9 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo as BitbucketRepo
 
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity2
+import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.google.gson.annotations.SerializedName
 import kong.unirest.HttpResponse
-import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
 import org.slf4j.LoggerFactory
 import org.slf4j.Logger
@@ -18,10 +18,13 @@ import java.lang.reflect.Field
 class BitbucketWebhook implements BitbucketJsonEntity2 {
 
 
+    int id
     String name
+    long createdDate
+    long updatedDate
     Map configuration
     String url
-    ArrayList<Event> events
+    ArrayList<WebhookEventType> events
     boolean active
     BitbucketRepo repo
     static Logger log = LoggerFactory.getLogger(this.class)
@@ -33,7 +36,7 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
 
     @Override
     BitbucketRepo getParent() {
-        return repo
+        return this.repo
     }
 
     @Override
@@ -41,19 +44,31 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
 
         assert repo instanceof BitbucketRepo
         this.repo = repo as BitbucketRepo
+
+        assert this.repo instanceof BitbucketRepo
     }
 
     @Override
     boolean isValid() {
-        name && configuration && url && repo && parent && instance && events.every { it instanceof Event }
+        name &&
+                id &&
+                url &&
+                repo &&
+                parent &&
+                instance &&
+                events.every { it instanceof WebhookEventType }
     }
 
     String getRepositorySlug() {
-        return repo.slug
+        return repo?.slug
     }
 
     String getProjectKey() {
-        return repo.project.key
+        return repo?.project?.key
+    }
+
+    String getSecret() {
+        return configuration?.secret
     }
 
 
@@ -65,8 +80,9 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
      * @param unirest
      * @return
      */
-    static ArrayList<BitbucketWebhook> getWebhooks(BitbucketRepo repo, ArrayList<Event> events = [], long maxReturns, UnirestInstance unirest) {
+    static ArrayList<BitbucketWebhook> getWebhooks(BitbucketRepo repo, ArrayList<WebhookEventType> events = [], long maxReturns, UnirestInstance unirest) {
 
+        //TODO Should use unirest from BitbucketRepo
         String url = "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.repositorySlug}/webhooks"
 
         if (events) {
@@ -80,21 +96,20 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
 
         hooks.every { it.isValid() }
 
-        //log.info("\n" + hooks.first().events.collect {"@SerializedName(\"$it\")\n${it.toString().toUpperCase().replace(":","_")}"}.sort().join(",\n") )
-
         return hooks
     }
 
 
-    static BitbucketWebhook createWebhook(String name, String remoteUrl, BitbucketRepo repo, ArrayList<Event> events = [], String secret = "", UnirestInstance unirest) {
-
+    static BitbucketWebhook createWebhook(String name, String remoteUrl, BitbucketRepo repo, ArrayList<WebhookEventType> events, String secret = "", UnirestInstance unirest) {
+        //TODO Should use unirest from BitbucketRepo
         String url = "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.repositorySlug}/webhooks"
+
 
         Map outBody = [
                 active: true,
                 events: getEventNames(events),
-                name : name,
-                url : remoteUrl
+                name  : name,
+                url   : remoteUrl
         ]
 
         if (secret) {
@@ -107,19 +122,41 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
 
         HttpResponse responseRaw = unirest.post(url).body(outBody).contentType("application/json").asJson()
 
-        assert responseRaw.status == 201 : "Error creating Webhook, API returned stauts ${responseRaw.status}, and body:" + responseRaw?.body
+        assert responseRaw.status == 201: "Error creating Webhook, API returned stauts ${responseRaw.status}, and body:" + responseRaw?.body
 
 
-        return null
+        ArrayList<BitbucketWebhook> hooks = fromJson(responseRaw.body.toString(), BitbucketWebhook, repo.parentObject as BitbucketInstanceManagerRest, repo)
+
+
+        assert hooks.size() == 1: "Library failed to parse response from API:" + responseRaw.body.toPrettyString()
+
+        return hooks.first()
+
+    }
+
+    String toString() {
+        return this.name + " (${this.id}) in ${projectKey}/${repo?.name}"
+    }
+
+    static boolean deleteWebhook(BitbucketWebhook webhook) {
+
+        assert webhook.isValid(): "Cant delete webhook ${webhook?.name}, it´s invalid"
+        String url = "/rest/api/latest/projects/${webhook.repo.projectKey}/repos/${webhook.repo.repositorySlug}/webhooks/" + webhook.id
+
+        HttpResponse response = webhook.newUnirest.delete(url).asEmpty()
+
+        assert response.status == 204: "Error deleting ${webhook.toString()}, API returned status ${response.status}"
+
+        return true
 
     }
 
 
-    static ArrayList<String> getEventNames(ArrayList<Event> events) {
+    static ArrayList<String> getEventNames(ArrayList<WebhookEventType> events) {
         return events.collect { getEventName(it) }
     }
 
-    static String getEventName(Event event) {
+    static String getEventName(WebhookEventType event) {
 
         //https://clevercoder.net/2016/12/12/getting-annotation-value-enum-constant/
         Field f = event.getClass().getField(event.name())
@@ -128,52 +165,6 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
     }
 
 
-    public enum Event {
-
-
-        @SerializedName("mirror:repo_synchronized")
-        MIRROR_REPO_SYNCHRONIZED,
-        @SerializedName("pr:comment:added")
-        PR_COMMENT_ADDED,
-        @SerializedName("pr:comment:deleted")
-        PR_COMMENT_DELETED,
-        @SerializedName("pr:comment:edited")
-        PR_COMMENT_EDITED,
-        @SerializedName("pr:declined")
-        PR_DECLINED,
-        @SerializedName("pr:deleted")
-        PR_DELETED,
-        @SerializedName("pr:from_ref_updated")
-        PR_FROM_REF_UPDATED,
-        @SerializedName("pr:merged")
-        PR_MERGED,
-        @SerializedName("pr:modified")
-        PR_MODIFIED,
-        @SerializedName("pr:opened")
-        PR_OPENED,
-        @SerializedName("pr:reviewer:approved")
-        PR_REVIEWER_APPROVED,
-        @SerializedName("pr:reviewer:needs_work")
-        PR_REVIEWER_NEEDS_WORK,
-        @SerializedName("pr:reviewer:unapproved")
-        PR_REVIEWER_UNAPPROVED,
-        @SerializedName("pr:reviewer:updated")
-        PR_REVIEWER_UPDATED,
-        @SerializedName("repo:comment:added")
-        REPO_COMMENT_ADDED,
-        @SerializedName("repo:comment:deleted")
-        REPO_COMMENT_DELETED,
-        @SerializedName("repo:comment:edited")
-        REPO_COMMENT_EDITED,
-        @SerializedName("repo:forked")
-        REPO_FORKED,
-        @SerializedName("repo:modified")
-        REPO_MODIFIED,
-        @SerializedName("repo:refs_changed")
-        REPO_REFS_CHANGED
-
-
-    }
 }
 
 

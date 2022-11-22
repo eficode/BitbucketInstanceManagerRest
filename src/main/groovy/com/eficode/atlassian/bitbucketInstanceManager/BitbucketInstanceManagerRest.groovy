@@ -1,6 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
+import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kong.unirest.Cookie
@@ -421,7 +422,7 @@ class BitbucketInstanceManagerRest {
                 .field("atl_token", atlToken).asEmpty()
 
         assert response.status == 302: "Creation of project returned unexpected HTTP status: " + response.status
-        assert response.headers.get("Location").first().endsWith("/$key"): "Creation of project returned unexpected redirect:" + response?.headers?.get("Location")
+        assert response.headers.get("Location").first().endsWith("/${key.toUpperCase()}"): "Creation of project returned unexpected redirect:" + response?.headers?.get("Location")
 
         unirest.shutDown()
         return getProject(key)
@@ -1498,10 +1499,21 @@ class BitbucketInstanceManagerRest {
             return BitbucketWebhook.getWebhooks(this, events, maxReturns, newUnirest)
         }
 
-        BitbucketWebhook createWebhook(String name, String remoteUrl, ArrayList<BitbucketWebhook.Event> events = [], String secret = "") {
+        /**
+         * Create a new webhook
+         * @param name name of new webhook
+         * @param remoteUrl The url that the webhook should communicate with
+         * @param events The events that the webhook should fire on (see BitbucketWebhook.Event), if emtpy all
+         * @param secret See https://docs.atlassian.com/bitbucketserver/docs-085/Manage+webhooks?utm_campaign=in-app-help&utm_medium=in-app-help&utm_source=stash#Managewebhooks-webhooksecrets
+         * @return The new WebHook
+         */
+        BitbucketWebhook createWebhook(String name, String remoteUrl, ArrayList<WebhookEventType> events, String secret = "") {
             return BitbucketWebhook.createWebhook(name, remoteUrl, this,events, secret, newUnirest)
         }
 
+        boolean deleteWebhook(BitbucketWebhook webhook) {
+            return BitbucketWebhook.deleteWebhook(webhook)
+        }
 
 
 

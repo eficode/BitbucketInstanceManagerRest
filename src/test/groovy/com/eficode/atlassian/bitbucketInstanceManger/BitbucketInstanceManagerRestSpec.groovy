@@ -7,6 +7,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketChange as BitbucketChange
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch as BitbucketBranch
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
+import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.eficode.devstack.container.impl.BitbucketContainer
 import groovy.test.GroovyAssert
 import kong.unirest.JsonNode
@@ -20,7 +21,6 @@ import org.slf4j.LoggerFactory
 import spock.lang.Ignore
 import spock.lang.Shared
 import spock.lang.Specification
-import unirest.shaded.com.google.gson.JsonObject
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -74,7 +74,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     def setupSpec() {
 
 
-
         if (dockerRemoteHost) {
             bitbucketContainer = new BitbucketContainer(baseUrl, dockerRemoteHost, "src/test/resources/Environments/dockerCert/")
             bitbucketContainer.jvmMaxRam = 12000
@@ -84,7 +83,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         unirestInstance.config().defaultBaseUrl(baseUrl).setDefaultBasicAuth(restAdmin, restPw).enableCookieManagement(false)
         bitbucketContainer.containerName = bitbucketContainer.extractDomainFromUrl(baseUrl)
-
 
 
         repoCacheDir.mkdirs()
@@ -393,41 +391,75 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     }
 
 
-    def "Test webhook CRUD"() {
+    def "Test webhook CRUD"(String hookName, ArrayList<WebhookEventType> events, String secret, boolean cleanProject) {
 
         setup:
         log.info("Testing webhook CRUD actions")
+        log.info("\tHook Name:" + hookName)
         String projectName = "Webhooks"
-        String projectKey = "CRUD"
+        String projectKey = "hook"
         String repoName = "CRUDing Webhooks"
+        String remoteUrl = "http://foo.bar"
 
         BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
         BitbucketProject bbProject = bb.getProject(projectKey)
-        BitbucketRepo bbRepo = bb.getRepo(projectKey, repoName)
 
-        /*
-        if (bbProject) {
+
+        ArrayList<WebhookEventType> expectedEvents = events.isEmpty() ? WebhookEventType.values().toList() : events
+        ArrayList<WebhookEventType> unExpectedEvents = WebhookEventType.values().toList().findAll { event -> !(event in expectedEvents) }
+
+        log.info("\tWith events:" + expectedEvents.join(","))
+
+        if (bbProject && cleanProject) {
             bb.deleteProject(bbProject, true)
+            bbProject = bb.createProject(projectName, projectKey)
+        } else if (!bbProject) {
+            bbProject = bb.createProject(projectName, projectKey)
         }
-        bbProject = bb.createProject(projectName, projectKey)
-        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
-
-        bbRepo.createFile("README.md", "master", "Initial text ${new Date()}", "Initial commit")
-
-        */
 
 
-        //bbRepo.updateFile("README.md", "master", "Initial text ${new Date()}", "Initial commit")
+        BitbucketRepo bbRepo = bb.getRepos(bbProject).find { it.name == repoName }
+
+        if (!bbRepo) {
+            bbRepo = bb.createRepo(bbProject, repoName)
+        }
 
 
-        when:
+        when: "When creating the webhook"
+        BitbucketWebhook newHook = bbRepo.createWebhook(hookName, remoteUrl, events, secret)
 
+        then: "The returned object should be valid and have the correct settings"
+        newHook.isValid()
+        newHook.events.sort() == expectedEvents.sort()
+        newHook.name == hookName
+        newHook.configuration.secret == secret
+        newHook.secret == secret
+        newHook.active
 
-        bbRepo.createWebhook("SPOC Hook", "http://remote.null", [BitbucketWebhook.Event.PR_COMMENT_ADDED,BitbucketWebhook.Event.REPO_MODIFIED ], "25")
-        //bbRepo.getWebhooks([BitbucketWebhook.Event.PR_COMMENT_ADDED,BitbucketWebhook.Event.REPO_MODIFIED ], 25)
+        when: "When querying library for all webhooks"
 
-        then:
-        true
+        BitbucketWebhook foundHook = bbRepo.getWebhooks([], 100).find { it.id == newHook.id }
+
+        then: "The same webhook should be returned with expected values"
+        foundHook.isValid()
+        foundHook.events.sort() == expectedEvents.sort()
+        foundHook.name == hookName
+        foundHook.configuration.secret == secret
+        foundHook.secret == secret
+        foundHook.active
+
+        expect:
+
+        assert (unExpectedEvents ? bbRepo.getWebhooks(unExpectedEvents, 100).find { it.id == newHook.id } == null : true): "getWebhooks() returned webhook even though it should have been filtered out"
+        assert bbRepo.getWebhooks([expectedEvents.shuffled().first()], 100).find { it.id == newHook.id }: "getWebhooks() did not return webhook when filtering on events"
+        assert bbRepo.deleteWebhook(foundHook)
+        GroovyAssert.assertThrows("status 404", AssertionError, {bbRepo.deleteWebhook(newHook)})
+
+        where:
+        hookName         | events                                       | secret         | cleanProject
+        "All events"     | WebhookEventType.values()                    | null           | true
+        "Random events"  | WebhookEventType.values().shuffled().take(5) | null           | false
+        "With a secret" | WebhookEventType.values().shuffled().take(7) | "super secret" | false
 
 
     }

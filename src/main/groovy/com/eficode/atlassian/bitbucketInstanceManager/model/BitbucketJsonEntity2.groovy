@@ -15,6 +15,10 @@ import java.lang.reflect.Type
 trait BitbucketJsonEntity2 {
 
 
+    //log.info("\n" + hooks.first().events.collect {"@SerializedName(\"$it\")\n${it.toString().toUpperCase().replace(":","_")}"}.sort().join(",\n") )
+
+
+
     abstract static Logger log
     BitbucketInstanceManagerRest instance
     abstract Object parent
@@ -88,7 +92,7 @@ trait BitbucketJsonEntity2 {
         }
 
         result.each {
-            it.parent = parent
+            it.setParent(parent)
             it.instance = instance
         }
 
@@ -100,6 +104,9 @@ trait BitbucketJsonEntity2 {
     }
 
 
+    UnirestInstance getNewUnirest() {
+        return instance.newUnirest
+    }
 
 
 
