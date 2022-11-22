@@ -97,7 +97,12 @@
     </dependencies>
 
     <build>
-        <!--sourceDirectory>${basedir}/src/main/groovy/</sourceDirectory-->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <!-- Configured in pluginManagement instead of plugins, because we do not want a shaded parent POM -->
@@ -134,7 +139,7 @@
                                     <!--exclude>org.codehaus.groovy:groovy</exclude>
                                     <exclude>org.codehaus.groovy:groovy-astbuilder</exclude-->
 
-                                    <exclude>com.google.code.gson:gson</exclude>
+                                    <!--exclude>com.google.code.gson:gson</exclude-->
                                     <exclude>org.apache.httpcomponents</exclude>
                                     <exclude>commons-*</exclude>
 
@@ -142,6 +147,10 @@
 
                             </artifactSet>
                             <relocations>
+                                <relocation>
+                                    <pattern>com.google.gson.</pattern>
+                                    <shadedPattern>com.eficode.shaded.com.google.gson.</shadedPattern>
+                                </relocation>
                                 <relocation>
                                     <pattern>kong.unirest.</pattern>
                                     <shadedPattern>com.eficode.shaded.kong.unirest.</shadedPattern>
