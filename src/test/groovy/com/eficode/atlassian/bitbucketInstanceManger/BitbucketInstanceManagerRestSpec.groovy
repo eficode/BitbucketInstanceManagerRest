@@ -6,6 +6,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketChange as BitbucketChange
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch as BitbucketBranch
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
 import com.eficode.devstack.container.impl.BitbucketContainer
 import groovy.test.GroovyAssert
 import kong.unirest.JsonNode
@@ -173,7 +174,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         return sampleRepo
     }
 
-    @Ignore
+    //@Ignore
     def "Test setup of basic application config"() {
 
         setup: "Remove container if it exists, create a new one"
@@ -387,6 +388,46 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         assert featureCommit.branch.id == newBranchWithNewType.id: "The API says the commit belongs to the incorrect branch"
         assert featureCommit.branch.latestCommit == featureCommit.id: "The API says the last commit in the branch is the wrong one "
         assert newBranchWithNewType.latestCommit == featureCommit.id: "The library didn't return the correct latestCommit after refreshing the branch object"
+
+
+    }
+
+
+    def "Test webhook CRUD"() {
+
+        setup:
+        log.info("Testing webhook CRUD actions")
+        String projectName = "Webhooks"
+        String projectKey = "CRUD"
+        String repoName = "CRUDing Webhooks"
+
+        BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
+        BitbucketProject bbProject = bb.getProject(projectKey)
+        BitbucketRepo bbRepo = bb.getRepo(projectKey, repoName)
+
+        /*
+        if (bbProject) {
+            bb.deleteProject(bbProject, true)
+        }
+        bbProject = bb.createProject(projectName, projectKey)
+        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
+
+        bbRepo.createFile("README.md", "master", "Initial text ${new Date()}", "Initial commit")
+
+        */
+
+
+        //bbRepo.updateFile("README.md", "master", "Initial text ${new Date()}", "Initial commit")
+
+
+        when:
+
+
+        bbRepo.createWebhook("SPOC Hook", "http://remote.null", [BitbucketWebhook.Event.PR_COMMENT_ADDED,BitbucketWebhook.Event.REPO_MODIFIED ], "25")
+        //bbRepo.getWebhooks([BitbucketWebhook.Event.PR_COMMENT_ADDED,BitbucketWebhook.Event.REPO_MODIFIED ], 25)
+
+        then:
+        true
 
 
     }

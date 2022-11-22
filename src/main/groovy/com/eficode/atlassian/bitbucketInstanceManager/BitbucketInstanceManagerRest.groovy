@@ -1,5 +1,6 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kong.unirest.Cookie
@@ -651,6 +652,10 @@ class BitbucketInstanceManagerRest {
 
 
     }
+
+
+
+
 
 
     class BitbucketChange implements BitbucketJsonEntity {
@@ -1478,6 +1483,26 @@ class BitbucketInstanceManagerRest {
             ]
 
         }
+
+
+        /** --- Webhook Config CRUD --- */
+
+        /**
+         * Get all webhooks in repo which has one of the $events enabled.
+         * If events=[] all webhooks will be returned
+         * @param events
+         * @param maxReturns
+         * @return
+         */
+        ArrayList<BitbucketWebhook>getWebhooks(ArrayList events = [], long maxReturns = 25) {
+            return BitbucketWebhook.getWebhooks(this, events, maxReturns, newUnirest)
+        }
+
+        BitbucketWebhook createWebhook(String name, String remoteUrl, ArrayList<BitbucketWebhook.Event> events = [], String secret = "") {
+            return BitbucketWebhook.createWebhook(name, remoteUrl, this,events, secret, newUnirest)
+        }
+
+
 
 
     }
