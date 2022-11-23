@@ -151,7 +151,6 @@ class BitbucketInstanceManagerRest {
 
 
             isLastPage = response?.body?.object?.has("isLastPage") ? response?.body?.object?.get("isLastPage") as boolean : true
-            //start = response?.body?.object?.has("nextPageStart") ? response?.body?.object?.get("nextPageStart") as int : -1
             start = response?.body?.object?.has("nextPageStart") && response.body.object["nextPageStart"] != null ? response.body.object["nextPageStart"] as int : -1
 
             if (returnValueOnly) {
@@ -349,7 +348,7 @@ class BitbucketInstanceManagerRest {
             JSONArray errors = response.body.object.errors
             ArrayList<String> messages = errors.collect { it.message }
 
-            if (deleteProjectRepos && messages.size() == 1 && messages.first().contains("The project \"$projectKey\" cannot be deleted because it has repositories")) {
+            if (deleteProjectRepos && messages.size() == 1 && messages.first().contains("The project \"${projectKey.toUpperCase()}\" cannot be deleted because it has repositories")) {
                 log.info("\tProject has repositories, deleting them now")
 
                 ArrayList<BitbucketRepo> projectRepos = getRepos(projectKey)
