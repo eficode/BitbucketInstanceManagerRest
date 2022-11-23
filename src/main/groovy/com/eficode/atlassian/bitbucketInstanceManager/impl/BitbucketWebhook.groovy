@@ -104,6 +104,9 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
         //TODO Should use unirest from BitbucketRepo
         String url = "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.repositorySlug}/webhooks"
 
+        if (events.isEmpty()) {
+            events = WebhookEventType.values()
+        }
 
         Map outBody = [
                 active: true,

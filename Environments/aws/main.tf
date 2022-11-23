@@ -53,7 +53,7 @@ data "aws_network_interface" "lb_nic" {
 }
 
 output "SSH-TO-Node" {
-  value = "If you wnat to SSH to the Docker engine node:\nssh -v ${var.ec2-username}@${aws_lb.load-balancer.dns_name} -p 22 -o StrictHostKeyChecking=no"
+  value = "If you want to SSH to the Docker engine node:\nssh -v ${var.ec2-username}@${aws_lb.load-balancer.dns_name} -p 22 -o StrictHostKeyChecking=no"
 }
 
 output "Hosts-record" {

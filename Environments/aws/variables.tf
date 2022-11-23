@@ -35,9 +35,9 @@ variable "trusted-external-ips" {
 variable "dockerServerCert" {
   type = map(string)
   default = {
-    "tlscacert" = "../dockerCert/ca.pem"
-    "tlscert" = "../dockerCert/server-cert.pem"
-    "tlskey" = "../dockerCert/server-key.pem"
+    "tlscacert" = "../docker/dockerCert/ca.pem"
+    "tlscert" = "../docker/dockerCert/server-cert.pem"
+    "tlskey" = "../docker/dockerCert/server-key.pem"
   }
 
 }

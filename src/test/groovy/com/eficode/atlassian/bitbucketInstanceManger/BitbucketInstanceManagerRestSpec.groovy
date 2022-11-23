@@ -46,7 +46,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     static String dockerRemoteHost = "https://docker.domain.se:2376"
 
     @Shared
-    static String bitbucketLicensePath = "src/test/resources/bitbucket/licenses/bitbucketLicense"
+    static String bitbucketLicensePath = "licenses/bitbucketLicense"
 
     @Shared
     static String restAdmin = "admin"
@@ -75,7 +75,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
         if (dockerRemoteHost) {
-            bitbucketContainer = new BitbucketContainer(baseUrl, dockerRemoteHost, "src/test/resources/Environments/dockerCert/")
+            bitbucketContainer = new BitbucketContainer(baseUrl, dockerRemoteHost, "Environments/docker/dockerCert/")
             bitbucketContainer.jvmMaxRam = 12000
         } else {
             bitbucketContainer = new BitbucketContainer(baseUrl)
