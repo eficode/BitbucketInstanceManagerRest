@@ -29,15 +29,32 @@ class BitbucketWebhookBody {
     static Gson objectMapper = new Gson()
 
 
-
     boolean isValid() {
-        return eventKey && repository && !changes.empty && changes.branch.every {it instanceof BitbucketBranch}
+        return eventKey && repository && !changes.empty && changes.branch.every { it instanceof BitbucketBranch }
+    }
+
+    String toString() {
+        String out = "Event type:\t$eventKey\n" +
+                "Time stamp:\t$date\n" +
+                "Actor:\t${actor.displayName}\n" +
+                "Project:\t${repository.project.name}\n" +
+                "Repo:\t${repository.name}\n" +
+                "Changes:\n"
+
+        changes.each { change ->
+            out += "\t\tCommit:\t" + change.toHash.take(11) + "\n"
+            out += "\t\tBranch:\t" + change.branch.displayId + "\n"
+            out += "\t\tType:\t" + change.type + "\n"
+            out += "\t\tFrom commit:\t" + change.fromHash.take(11) + "\n"
+
+        }
+
+        return out
     }
 
     static BitbucketWebhookBody fromJson(String jsonString) {
 
-        assert jsonString[0] == "{" : "Expected a Json object starting with \"{\""
-
+        assert jsonString[0] == "{": "Expected a Json object starting with \"{\""
 
 
         Type webhookBodyType = TypeToken.get(BitbucketWebhookBody).getType()
@@ -54,6 +71,7 @@ class BitbucketWebhookBody {
         String type
         LinkedHashMap links
     }
+
     class Repository {
         String slug
         Integer id
@@ -69,8 +87,8 @@ class BitbucketWebhookBody {
         boolean archived
         Map links
     }
-    class Changes {
 
+    class Changes {
 
 
         BitbucketBranch ref
