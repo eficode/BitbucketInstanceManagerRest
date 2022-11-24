@@ -1,5 +1,6 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.google.gson.Gson
@@ -1144,7 +1145,7 @@ class BitbucketInstanceManagerRest {
         /**
          * Create a new branch
          * @param branchName Name of new branch
-         * @param branchFrom ex: refs/heads/master, master,
+         * @param branchFrom ex: refs/heads/master, master, commit id
          * @param branchType (Optional) ex: bugfix, hotfix, feature
          *              If branchType doesnt already exist in repo, it will be created
          * @return Full branch name: ex:  refs/heads/new-branch, refs/heads/hotfix/new-hotfix
@@ -1507,28 +1508,20 @@ class BitbucketInstanceManagerRest {
         /** -- Pull Request CRUD -- **/
 
 
-        void createPullRequestRaw(String title, String description, String fromRef, String toBranch) {
-
-            //Source branch 11aaa
-            //Destination branch: 6c8
-
-            //GET /projects/SMP/repos/vscode/commits?until=11add3cf2ad5bcaead733aa4c8c9d2a017b4b7fc&since=6c85bb68aae4fdbcecea4797407259ca2cabec60&secondaryRepositoryId=153
-
-            String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/pull-requests"
-
-            Map body = [
-                    description: description,
-                    title : title,
-                    fromRef    : [
-                            id: fromRef
-                    ],
-                    toRef      : [
-                            id: toBranch
-                    ]
-            ]
-
+        /**
+         * Creates a new PR, autogenerate title and description based on branches provided.
+         * @param fromRef Source branch, ie feature branch, bug branch etc
+         * @param toBranch Destination branch, ie master
+         * @return The new PR object
+         */
+        BitbucketPullRequest createPullRequest( BitbucketBranch fromRef, BitbucketBranch toBranch) {
+            return BitbucketPullRequest.createPullRequest(fromRef, toBranch)
         }
 
+        BitbucketPullRequest createPullRequest(String title, String description, BitbucketBranch fromRef, BitbucketBranch toBranch) {
+
+            return BitbucketPullRequest.createPullRequest(title, description, fromRef.id, toBranch.id, toBranch.repo)
+        }
 
         /** --- Webhook Config CRUD --- */
 

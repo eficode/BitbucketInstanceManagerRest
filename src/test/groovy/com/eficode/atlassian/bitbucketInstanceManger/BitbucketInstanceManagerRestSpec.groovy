@@ -6,6 +6,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketChange as BitbucketChange
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch as BitbucketBranch
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.eficode.devstack.container.impl.BitbucketContainer
@@ -236,6 +237,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     }
 
 
+
     def "Test PR config crud"() {
 
 
@@ -284,7 +286,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     }
 
 
-    @Ignore
+
     def "Test PR CRUD"() {
 
 
@@ -305,19 +307,27 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         bbProject = bb.createProject(projectName, projectKey)
         BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
 
+
         String expectedFileContent = "Initial file content"
         BitbucketCommit creatingFileCommit = bbRepo.createFile("README.md", "master", expectedFileContent, "Creating the file in the master branch")
 
         expectedFileContent += "\n\nUpdate from second branch"
-        BitbucketCommit firstUpdateCommit = bbRepo.updateFile("README.md", "a-separate-branch", expectedFileContent, "A commit in separate branch")
-
+        BitbucketBranch masterBranch = bbRepo.getAllBranches().find {it.displayId == "master"}
+        BitbucketBranch secondBranch = bbRepo.createBranch("a-second-branch", "master")
+        BitbucketCommit firstUpdateCommit = bbRepo.appendFile("README.md", "a-second-branch", expectedFileContent, "A commit in separate branch")
+        BitbucketCommit secondUpdateCommit = bbRepo.appendFile("README.md", "a-second-branch", expectedFileContent, "A second commit in the separate branch")
+        secondBranch = secondBranch.refreshInfo()
 
         when:
         true
-        //bbRepo.createPullRequestRaw("PR Title", "PR Description")
+        BitbucketPullRequest pr = bbRepo.createPullRequest(secondBranch, masterBranch)
 
         then:
-        true
+        pr.description.readLines().first().contains(firstUpdateCommit.message)
+        pr.description.readLines().last().contains(secondUpdateCommit.message)
+        pr.title.contains(secondBranch.displayId)
+        pr.title.contains(masterBranch.displayId)
+        pr.isValid()
 
     }
 
