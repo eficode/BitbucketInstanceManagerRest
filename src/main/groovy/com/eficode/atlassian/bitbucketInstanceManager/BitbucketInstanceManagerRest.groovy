@@ -715,16 +715,30 @@ class BitbucketInstanceManagerRest {
         }
 
 
+        static getAtlassianWikiHeader() {
+            return "|| Action || File ||\n"
+        }
+
         static getMarkdownHeader() {
 
             return "| Action | File |\n|--|--|\n"
 
         }
 
+        static getAtlassianWikiFooter() {
+            return markdownFooter
+        }
+
         static getMarkdownFooter() {
 
             return "\n\n➕ - Added\t📝 - Modified\t📋 - Copied\t🗂️ - Moved\t🗑 - Deleted\t"
 
+        }
+
+
+        String toAtlassianWikiMarkup() {
+
+            return "| $actionSymbol | [${getFileNameTruncated(60)}|${links.self.href.first()}] | \n"
         }
 
         String toMarkdown() {
@@ -877,6 +891,10 @@ class BitbucketInstanceManagerRest {
 
         }
 
+        String getLink() {
+            return baseUrl + "/projects/${repository.projectKey}/repos/${repository.slug}/commits/$id"
+        }
+
         boolean isValid() {
 
             return id && displayId && message && parentObject instanceof BitbucketInstanceManagerRest && repository.isValid()
@@ -907,6 +925,33 @@ class BitbucketInstanceManagerRest {
 
         }
 
+
+        String toAtlassianWikiMarkup() {
+
+            String parentsWithLinks = parents.collect {"[$displayId|${baseUrl + "/projects/${repository.projectKey}/repos/${repository.slug}/commits/$id"}]"}.join(", ")
+
+            String mainOut = "h2. Commit ID: [$displayId|${link}]"  + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
+                    "*Author:* [~${author.name}] (Remote user: [${author.name}|${author.getProfileUrl(baseUrl)}])\n\n" +
+                    "*Timestamp:* " + (committerTimestamp != 0 ? dateFormat.format(new Date(committerTimestamp as long)) : dateFormat.format(new Date(authorTimeStamp as long))) + "\n\n" +
+                    "*Branch:* " + branch.displayId + "\n\n" +
+                    "*Parents:* " + parentsWithLinks + "\n\n" +
+            "*Message:*\n\n"
+
+
+            message.eachLine { mainOut += " * " + it + "\n" }
+
+            mainOut += "\n\\\\\n ---- \n\\\\\n"
+
+
+            String changesOut = BitbucketChange.atlassianWikiHeader
+            changes.each { changesOut += it.toAtlassianWikiMarkup() }
+            changesOut += BitbucketChange.atlassianWikiFooter
+
+
+            return mainOut + changesOut
+
+        }
+
         /**
          * Return a MarkDown representation (optimized for bitbucket) of the commit including:
          * Commit it, Author, Timestamp, Parents (commits ids) and commit message
@@ -918,7 +963,7 @@ class BitbucketInstanceManagerRest {
             String mainOut = "## Commit ID: " + displayId + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
                     "**Author:** [${author.name}](${author.getProfileUrl(baseUrl)}) \n\n" +
                     "**Timestamp:** " + (committerTimestamp != 0 ? dateFormat.format(new Date(committerTimestamp as long)) : dateFormat.format(new Date(authorTimeStamp as long))) + "\n\n" +
-                    "**Parents:** " + parents.displayId.join(", ") + "\n\n"
+                    "**Parents:** " + parents.displayId.join(", ") + "\n\n" +
             "**Message:**\n\n"
 
 
