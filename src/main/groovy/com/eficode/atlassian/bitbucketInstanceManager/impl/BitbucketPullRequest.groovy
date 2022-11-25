@@ -4,8 +4,11 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity2
+import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import kong.unirest.HttpResponse
+import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
+import kong.unirest.json.JSONObject
 
 class BitbucketPullRequest implements BitbucketJsonEntity2 {
 
@@ -46,7 +49,7 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
     @Override
     boolean isValid() {
 
-        return repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author.size() >= 4
+        return repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author.size() >= 4 && instance instanceof BitbucketInstanceManagerRest
 
     }
 
@@ -115,16 +118,24 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
 
     /** --- GET --- **/
 
+    /**
+     * Get Pull requests
+     * @param repo the repo to fetch from
+     * @param state (Optional)  What state to filter PRs by, available options: ALL, OPEN, DECLINED or MERGED. Default: OPEN
+     * @param targetBranch (Optional)  Get PRs to a  branch
+     * @return An array of BitbucketPullRequest, or an empty array if no matches
+     *
+     */
 
-    static ArrayList<BitbucketPullRequest> getPullRequests(BitbucketRepo repo, String state = "OPEN", String branchId = "") {
+    static ArrayList<BitbucketPullRequest> getPullRequests(BitbucketRepo repo, String state = "OPEN", BitbucketBranch targetBranch = null) {
 
         UnirestInstance unirest = repo.parentObject.newUnirest
-        String prJson = getPullRequests(repo.projectKey, repo.repositorySlug, unirest, state, branchId)
+        String prJson = getPullRequests(repo.projectKey, repo.repositorySlug, unirest, state, targetBranch?.id)
 
         ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.parentObject as BitbucketInstanceManagerRest, repo)
 
         if (prs.empty) {
-            return prs
+            return []
         }
 
         assert prs.every { it.isValid() }: " Library returned invalid object"
@@ -133,19 +144,96 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
 
     }
 
-    static String getPullRequests(String projectKey, String repositorySlug, UnirestInstance unirest, String state = "OPEN", String branchId = "") {
+    /**
+     * Get Pull requests
+     * @param projectKey Key of project to fetch from
+     * @param repositorySlug Slug of repo to fetch from
+     * @param unirest a Unirest instance to use to make the call
+     * @param state (Optional) What state to filter PRs by, available options: ALL, OPEN, DECLINED or MERGED. Default: OPEN
+     * @param branchId (Optional) Get PRs to a full branch id ( ex refs/heads/master)
+     * @param maxPrs (Optional) Max PRs to return (will get the latest)
+     * @return An array of  String JSON representations of the PR
+     *
+     */
+    static ArrayList<String> getPullRequests(String projectKey, String repositorySlug, UnirestInstance unirest, String state = "OPEN", String branchId = "", int maxPrs = 100) {
 
         String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/pull-requests"
 
-        Map<String, String> parameters = [:]
-        state ? parameters.put("state", state) : ""
-        branchId ? parameters.put("at", branchId) : ""
+        Map<String, String> parameters = [state: state, at: branchId]
+        //state ? parameters.put("state", state) : ""
+        //branchId ? parameters.put("at", branchId) : ""
 
-        HttpResponse responseRaw = unirest.get(url).queryString(parameters).asJson()
 
-        assert responseRaw.status == 201: "Error getting Pull Requests from $projectKey/$repositorySlug, API returned stauts ${responseRaw.status}, and body:" + responseRaw?.body
+        ArrayList<JsonNode> responseRaw = getJsonPages(unirest, url, maxPrs, ["state": state, at: branchId], true)
+
+
+        return responseRaw
+
+    }
+
+
+    /** --- MERGE --- **/
+
+    BitbucketPullRequest mergePullRequest(MergeStrategy mergeStrategy = null) {
+        return mergePullRequest(this, mergeStrategy)
+    }
+
+    static BitbucketPullRequest mergePullRequest(BitbucketPullRequest pullRequest, MergeStrategy mergeStrategy = null) {
+
+        return mergePullRequest(pullRequest.id.toString(), pullRequest.version, mergeStrategy, pullRequest.repo)
+
+    }
+
+    static BitbucketPullRequest mergePullRequest(String prId, Integer prVersion, MergeStrategy mergeStrategy = null, BitbucketRepo repo) {
+
+        UnirestInstance unirest = repo.parentObject.newUnirest
+        String prJson = mergePullRequest(repo.projectKey, repo.slug, prId, prVersion, unirest, mergeStrategy ? mergeStrategy.getSerializedName() : "")
+
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.parentObject as BitbucketInstanceManagerRest, repo)
+
+        assert prs.size() == 1: "Library failed to parse response from API:" + prJson
+        assert prs.first().isValid(): " Library returned invalid object"
+        return prs.first()
+
+    }
+
+    /**
+     * Merge en exsiting PR
+     * @param projectKey Name of project where the PR is
+     * @param repositorySlug Slug of Repo where PR is
+     * @param prId Id of PR
+     * @param prVersion Version of PR, this makes sure that the PR hasn't been updated since fetched by the library. Will error if out of date
+     * @param unirest Unirest instance to use while making the request
+     * @param strategyId ID of merge strategy to use ex no-ff, ff etc. Check MergeStrategy
+     * @return A JSON string representation of the PR after merge.
+     */
+    static String mergePullRequest(String projectKey, String repositorySlug, String prId, Integer prVersion, UnirestInstance unirest, String strategyId = "") {
+
+        String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/pull-requests/$prId/merge"
+
+        Map<String, Object> body = ["version": prVersion]
+        strategyId != "" ? body.put("strategyId", strategyId) : null
+
+        HttpResponse<JsonNode> responseRaw = unirest.post(url).body(body).contentType("application/json").asJson()
+
+        if (responseRaw.status == 409) {
+            String errorMsg
+            try {
+                JSONObject error = responseRaw.body.getObject().getJSONArray("errors").getJSONObject(0)
+                errorMsg = error.get("message") + " Latest version of PR is:" + error.get("currentVersion") + ", " + error.get("expectedVersion") + " was supplied"
+
+            } catch (Exception ignore) {
+                throw new InputMismatchException("Error merging Pull Request, API returned stauts ${responseRaw.status}, and body:" + responseRaw?.body)
+            }
+
+            throw new InputMismatchException(errorMsg)
+        }
+
+        assert responseRaw.status == 200: "Error merging Pull Request, API returned stauts ${responseRaw.status}, and body:" + responseRaw?.body
+
 
         return responseRaw.body
+
 
     }
 

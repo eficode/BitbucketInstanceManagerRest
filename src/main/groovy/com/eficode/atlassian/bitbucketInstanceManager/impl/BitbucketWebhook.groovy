@@ -85,12 +85,9 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
         //TODO Should use unirest from BitbucketRepo
         String url = "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.repositorySlug}/webhooks"
 
-        if (events) {
-            url += "?" + getEventNames(events).collect { "event=" + it }.join("&")
 
-        }
 
-        ArrayList<JsonObject> rawResponse = getJsonPages(unirest, url, maxReturns, true)
+        ArrayList<JsonObject> rawResponse = getJsonPages(unirest, url, maxReturns, [event:getEventNames(events)],true)
 
         ArrayList<BitbucketWebhook> hooks = fromJson(rawResponse.toString(), BitbucketWebhook, repo.parentObject as BitbucketInstanceManagerRest, repo)
 
@@ -155,17 +152,12 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
     }
 
 
+    //Get the name/value used by Bitbucket API to refer to an Event type
     static ArrayList<String> getEventNames(ArrayList<WebhookEventType> events) {
-        return events.collect { getEventName(it) }
+        return events.collect { getSerializedName(it) }
     }
 
-    static String getEventName(WebhookEventType event) {
 
-        //https://clevercoder.net/2016/12/12/getting-annotation-value-enum-constant/
-        Field f = event.getClass().getField(event.name())
-        SerializedName a = f.getAnnotation(SerializedName.class)
-        return a.value()
-    }
 
 
 }

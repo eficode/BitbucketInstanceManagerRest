@@ -2,6 +2,7 @@ package com.eficode.atlassian.bitbucketInstanceManager
 
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
+import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -1410,14 +1411,14 @@ class BitbucketInstanceManagerRest {
 
         /** --- Pull Request Config CRUD --- **/
 
-        boolean enableAllMergeStrategies(String defaultStrategy = "no-ff") {
-            return setEnabledMergeStrategies(defaultStrategy, ["no-ff", "ff", "ff-only", "rebase-no-ff", "rebase-ff-only", "squash", "squash-ff-only"])
+        boolean enableAllMergeStrategies(MergeStrategy defaultStrategy = MergeStrategy.NO_FF) {
+            return setEnabledMergeStrategies(defaultStrategy, MergeStrategy.values() as ArrayList<MergeStrategy>)
         }
 
-        boolean setEnabledMergeStrategies(String defaultStrategy, ArrayList<String> enabledStrategies) {
+        boolean setEnabledMergeStrategies(MergeStrategy defaultStrategy, ArrayList<MergeStrategy> enabledStrategies) {
 
             log.info("Setting enabled Merge strategies for repo " + name)
-            ArrayList<String> possibleStrategies = ["no-ff", "ff", "ff-only", "rebase-no-ff", "rebase-ff-only", "squash", "squash-ff-only"]
+            ArrayList<MergeStrategy> possibleStrategies = MergeStrategy.values()
             assert enabledStrategies.every { it in possibleStrategies }: "Got unsupported merge strategy"
             assert defaultStrategy in enabledStrategies: "The default strategy must be part of the enabledStrategies"
 
@@ -1426,8 +1427,9 @@ class BitbucketInstanceManagerRest {
 
             Map restBody = [
                     "mergeConfig": [
-                            strategies     : enabledStrategies.collect { [id: it] },
-                            defaultStrategy: [id: defaultStrategy]
+                            strategies     : enabledStrategies.collect { [id: it.serializedName] },
+                            defaultStrategy: [id: defaultStrategy.serializedName]
+
                     ]
             ]
 
@@ -1444,8 +1446,8 @@ class BitbucketInstanceManagerRest {
             Map response = jsonPagesToGenerics(responseRaw.body)
 
             assert response.mergeConfig.type == "REPOSITORY": "Error setting REPO-level merge strategies"
-            assert response.mergeConfig.defaultStrategy.id == defaultStrategy: "Error setting default merge strategy"
-            assert response.mergeConfig.strategies.findAll { it.enabled }.id == enabledStrategies: "Error setting enabled strategies, API returned enabled strategies:" + response?.mergeConfig?.strategies?.findAll { it.enabled }?.id
+            assert response.mergeConfig.defaultStrategy.id == defaultStrategy.serializedName: "Error setting default merge strategy"
+            assert response.mergeConfig.strategies.findAll { it.enabled }.id == enabledStrategies.serializedName: "Error setting enabled strategies, API returned enabled strategies:" + response?.mergeConfig?.strategies?.findAll { it.enabled }?.id
 
             log.info("\tMerge strategies successfully set")
             return true
@@ -1466,14 +1468,22 @@ class BitbucketInstanceManagerRest {
          * Possible IDs: no-ff, ff, ff-only, rebase-no-ff, rebase-ff-only, squash, squash-ff-only
          * @return Array of IDs
          */
-        ArrayList<String> getEnabledMergeStrategies() {
+        ArrayList<MergeStrategy> getEnabledMergeStrategies() {
 
             Map mergeConfig = prRawConfig.mergeConfig as Map
             ArrayList<Map> strategies = mergeConfig.strategies as ArrayList<Map>
 
             strategies.removeAll { !it.enabled }
 
-            return strategies.id
+            ArrayList<MergeStrategy> strategiesEnum = []
+
+            strategies.each {
+                MergeStrategy enumStrat = MergeStrategy.getFromSerializedName(it.id as String)
+                assert enumStrat : "Error finding Merge strategy for:" + it?.id
+                strategiesEnum.add(enumStrat)
+            }
+
+            return strategiesEnum
 
         }
 
@@ -1481,12 +1491,12 @@ class BitbucketInstanceManagerRest {
          * Get the default merge strategy for the repo
          * @return one of: no-ff, ff, ff-only, rebase-no-ff, rebase-ff-only, squash, squash-ff-only
          */
-        String getDefaultMergeStrategy() {
+        MergeStrategy getDefaultMergeStrategy() {
 
             Map mergeConfig = prRawConfig.mergeConfig as Map
             Map defaultStrategy = mergeConfig.defaultStrategy as Map
 
-            return defaultStrategy.id
+            return MergeStrategy.getFromSerializedName(defaultStrategy.id as String)
         }
 
 
@@ -1506,6 +1516,44 @@ class BitbucketInstanceManagerRest {
 
 
         /** -- Pull Request CRUD -- **/
+
+
+        /**
+         * Get all open pull requests in repo
+         * @param targetBranch (Optional), filter on PRs to branch
+         * @return
+         */
+        ArrayList <BitbucketPullRequest> getOpenPullRequests (BitbucketBranch targetBranch = null) {
+
+            return getPullRequests("OPEN", targetBranch)
+
+        }
+
+
+        /**
+         * Get All pull requests in repo
+         * @param targetBranch (Optional), filter on PRs to branch
+         * @return
+         */
+        ArrayList <BitbucketPullRequest> getAllPullRequests (BitbucketBranch targetBranch = null) {
+
+            return getPullRequests("ALL", targetBranch)
+
+        }
+
+        /**
+         * Get pull requests in repo
+         * @param state What state to filter PRs by, available options: ALL, OPEN, DECLINED or MERGED
+         * @param targetBranch (Optional), filter on PRs to branch
+         * @return
+         */
+        ArrayList <BitbucketPullRequest> getPullRequests (String state, BitbucketBranch targetBranch = null) {
+
+            return BitbucketPullRequest.getPullRequests(this, state, targetBranch)
+
+        }
+
+
 
 
         /**

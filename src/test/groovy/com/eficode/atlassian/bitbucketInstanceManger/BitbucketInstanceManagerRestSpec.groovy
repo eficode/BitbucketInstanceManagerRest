@@ -8,6 +8,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch as BitbucketBranch
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
+import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.eficode.devstack.container.impl.BitbucketContainer
 import groovy.test.GroovyAssert
@@ -31,8 +32,7 @@ import java.nio.file.Path
  * Presumes that there is a Docker engine listening on the default socket
  *      bitbucketLicensePath points to a file containing a Bitbucket license
  *      baseUrl points to the url (and port) of bitbucket
- *
- */
+ **/
 
 class BitbucketInstanceManagerRestSpec extends Specification {
 
@@ -237,7 +237,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     }
 
 
-
     def "Test PR config crud"() {
 
 
@@ -259,39 +258,38 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         expect:
         //Reading the default settings of a newly created repo
-        assert bbRepo.defaultMergeStrategy == "no-ff": "The new repo got an unexpected default merge strategy"
-        assert bbRepo.enabledMergeStrategies == ["no-ff"]: "The new repo got an unexpected enabled merge strategies"
+
+        assert bbRepo.defaultMergeStrategy == MergeStrategy.NO_FF: "The new repo got an unexpected default merge strategy"
+        assert bbRepo.enabledMergeStrategies == [MergeStrategy.NO_FF]: "The new repo got an unexpected enabled merge strategies"
         assert bbRepo.mergeStrategyIsInherited(): "The new repo started with repo-local strategies"
 
 
         //Updating repo with new settings, and reading them back
-        assert bbRepo.setEnabledMergeStrategies("rebase-no-ff", ["ff-only", "rebase-no-ff"]): "Error setting Merge Strategies "
+        assert bbRepo.setEnabledMergeStrategies(MergeStrategy.REBASE_NO_FF, [MergeStrategy.FF_ONLY, MergeStrategy.REBASE_NO_FF]): "Error setting Merge Strategies "
 
-        assert bbRepo.defaultMergeStrategy == "rebase-no-ff": "API does not report the expected default merge strategy after setting it"
-        assert bbRepo.enabledMergeStrategies == ["ff-only", "rebase-no-ff"]: "API does not report the expected  merge strategies after setting them"
+        assert bbRepo.defaultMergeStrategy == MergeStrategy.REBASE_NO_FF: "API does not report the expected default merge strategy after setting it"
+        assert bbRepo.enabledMergeStrategies == [MergeStrategy.FF_ONLY, MergeStrategy.REBASE_NO_FF]: "API does not report the expected  merge strategies after setting them"
         assert !bbRepo.mergeStrategyIsInherited(): "After setting repo-local merge strategies, they are still inherited from project"
 
 
         assert bbRepo.enableAllMergeStrategies(): "Error enabling all Merge Strategies"
-        assert bbRepo.defaultMergeStrategy == "no-ff": "Enabling all merge strategies, ended up setting an unexpected default strategy"
+        assert bbRepo.defaultMergeStrategy == MergeStrategy.NO_FF: "Enabling all merge strategies, ended up setting an unexpected default strategy"
 
-        assert bbRepo.enableAllMergeStrategies("ff-only"): "Error enabling all Merge Strategies"
-        assert bbRepo.defaultMergeStrategy == "ff-only"
+        assert bbRepo.enableAllMergeStrategies(MergeStrategy.FF_ONLY): "Error enabling all Merge Strategies"
+        assert bbRepo.defaultMergeStrategy == MergeStrategy.FF_ONLY
 
 
         //Giving the wrong input
-        GroovyAssert.shouldFail { bbRepo.setEnabledMergeStrategies("wrong-default", ["wrong-default", "ff-only"]) }
-        GroovyAssert.shouldFail { bbRepo.setEnabledMergeStrategies("ff-only", ["wrong-strategy", "ff-only"]) }
+        GroovyAssert.shouldFail { bbRepo.setEnabledMergeStrategies(MergeStrategy.FF_ONLY, [MergeStrategy.FF]) }
+
 
     }
-
 
 
     def "Test PR CRUD"() {
 
 
         setup:
-        //TODO Continue here, broken state
         log.info("Testing Pull Request Config CRUD actions using Bitbucket API")
         String projectName = "Pull Request Actions"
         String projectKey = "PRA"
@@ -307,27 +305,66 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         bbProject = bb.createProject(projectName, projectKey)
         BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
 
+        log.info("\tUsing Project:" + bbProject.key)
+        log.info("\tUsing Repo:" + bbRepo.slug)
 
         String expectedFileContent = "Initial file content"
         BitbucketCommit creatingFileCommit = bbRepo.createFile("README.md", "master", expectedFileContent, "Creating the file in the master branch")
 
-        expectedFileContent += "\n\nUpdate from second branch"
-        BitbucketBranch masterBranch = bbRepo.getAllBranches().find {it.displayId == "master"}
+
+        BitbucketBranch masterBranch = bbRepo.getAllBranches().find { it.displayId == "master" }
+        log.info("\tCreated file ${creatingFileCommit.getChanges().first().getFileNameTruncated(60)} in " + masterBranch.id)
         BitbucketBranch secondBranch = bbRepo.createBranch("a-second-branch", "master")
+        log.info("\tCreated branch:" + secondBranch.id)
+
+        expectedFileContent += "\n\nFirst update from second branch"
         BitbucketCommit firstUpdateCommit = bbRepo.appendFile("README.md", "a-second-branch", expectedFileContent, "A commit in separate branch")
-        BitbucketCommit secondUpdateCommit = bbRepo.appendFile("README.md", "a-second-branch", expectedFileContent, "A second commit in the separate branch")
-        secondBranch = secondBranch.refreshInfo()
+        log.info("\tUpdated file ${firstUpdateCommit.getChanges().first().getFileNameTruncated(60)} in " + secondBranch.id)
 
-        when:
-        true
+        expectedFileContent += "\n\nSecond update from second branch"
+        BitbucketCommit secondUpdateCommit = bbRepo.appendFile("README.md", secondBranch.displayId, expectedFileContent, "A second commit in the separate branch")
+        log.info("\tUpdated file ${firstUpdateCommit.getChanges().first().getFileNameTruncated(60)} again in " + secondBranch.id)
+        secondBranch = secondBranch.refreshInfo() //Needed to update latestCommit in the branch
+
+        when: "When creating a pull request from a branch with two new commits"
         BitbucketPullRequest pr = bbRepo.createPullRequest(secondBranch, masterBranch)
+        log.info("\tCreated PR ${pr.title} from ${secondBranch.id} to ${masterBranch.id}")
 
-        then:
+        then: "The PR should have an autogenerated description, and title"
+        log.info("\tChecking returned PR object")
         pr.description.readLines().first().contains(firstUpdateCommit.message)
         pr.description.readLines().last().contains(secondUpdateCommit.message)
+        log.info("\t\tDescription is correct")
         pr.title.contains(secondBranch.displayId)
         pr.title.contains(masterBranch.displayId)
+        log.info("\t\tTitle is correct")
         pr.isValid()
+        log.info("\t\tObject is valid")
+
+        log.info("\tChecking that various GET requests can find the new PR")
+        assert [
+                bbRepo.getOpenPullRequests().first().id,
+                bbRepo.getAllPullRequests().first().id,
+                bbRepo.getOpenPullRequests(masterBranch).first().id,
+                bbRepo.getAllPullRequests(masterBranch).first().id,
+        ].every { it == pr.id } : "Error getting the newly created PR"
+
+        assert bbRepo.getPullRequests("DECLINED").empty : "Library found Declined PRs in the repo which shouldn't be there"
+        assert bbRepo.getPullRequests("MERGED").empty : "Library found Declined PRs in the repo which shouldn't be there"
+
+        log.info("\t\tGet requests succeeded in finding the PR")
+
+        when:
+
+        BitbucketPullRequest prAfterMerge = pr.mergePullRequest()
+
+
+        then:
+        prAfterMerge.isValid()
+
+        //Test 1. create pr, 2. modify source branch, 3 Attempt merge with pr from step 1 expect error
+        //Test various enabled and disabled merge strategies. Test markdown with these.
+        //Add refresh to pr object
 
     }
 
@@ -377,9 +414,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         with(bbRepo.getAllBranches()) { branches ->
             branches.every {
                 it.isValid()
-            } &&
-                    branches.latestCommit.unique().size() == 1 &&
-                    branches.latestChangeset.unique().size() == 1
+            } && branches.latestCommit.unique().size() == 1 && branches.latestChangeset.unique().size() == 1
 
         }
 
@@ -463,12 +498,12 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         assert (unExpectedEvents ? bbRepo.getWebhooks(unExpectedEvents, 100).find { it.id == newHook.id } == null : true): "getWebhooks() returned webhook even though it should have been filtered out"
         assert bbRepo.getWebhooks([expectedEvents.shuffled().first()], 100).find { it.id == newHook.id }: "getWebhooks() did not return webhook when filtering on events"
         assert bbRepo.deleteWebhook(foundHook)
-        GroovyAssert.assertThrows("status 404", AssertionError, {bbRepo.deleteWebhook(newHook)})
+        GroovyAssert.assertThrows("status 404", AssertionError, { bbRepo.deleteWebhook(newHook) })
 
         where:
-        hookName         | events                                       | secret         | cleanProject
-        "All events"     | WebhookEventType.values()                    | null           | true
-        "Random events"  | WebhookEventType.values().shuffled().take(5) | null           | false
+        hookName        | events                                       | secret         | cleanProject
+        "All events"    | WebhookEventType.values()                    | null           | true
+        "Random events" | WebhookEventType.values().shuffled().take(5) | null           | false
         "With a secret" | WebhookEventType.values().shuffled().take(7) | "super secret" | false
 
 
@@ -572,11 +607,9 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         ArrayList<Integer> lengths = [36, 5, 10, 32, 33, 34, 35, 36, 37, 38, 39, 40, 62, 98, 500]
 
         BitbucketChange change = new BitbucketChange(bb)
-        change.path = [
-                toString: full,
-                parent  : parent,
-                name    : name
-        ]
+        change.path = [toString: full,
+                       parent  : parent,
+                       name    : name]
 
         log.info("Testing truncation of file names")
         log.info("\tFileName:" + full)

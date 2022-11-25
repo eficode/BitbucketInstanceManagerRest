@@ -2,6 +2,7 @@ package com.eficode.atlassian.bitbucketInstanceManager.model
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
@@ -18,13 +19,12 @@ trait BitbucketJsonEntity2 {
     //log.info("\n" + hooks.first().events.collect {"@SerializedName(\"$it\")\n${it.toString().toUpperCase().replace(":","_")}"}.sort().join(",\n") )
 
 
-
     abstract static Logger log
     BitbucketInstanceManagerRest instance
     abstract Object parent
     static Gson objectMapper = new Gson()
 
-    static ArrayList<JsonNode> getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, boolean returnValueOnly = true) {
+    static ArrayList<JsonNode> getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, Map<String, Object> urlParameters = [:], boolean returnValueOnly = true) {
 
 
         int start = 0
@@ -32,11 +32,37 @@ trait BitbucketJsonEntity2 {
 
         ArrayList responses = []
 
+
+        Map<String, Object> parsedParams = urlParameters.findAll { it.value || it.value == 0 } // Remove empty values
+
+        String parameterString = "?"
+
+        parsedParams.eachWithIndex { key, value, index ->
+            //Create key=value1&key=value2... for arrays
+            if (value instanceof ArrayList) {
+                parameterString += value.collect { key + "=" + it }.join("&")
+            }else {
+                parameterString += key + "=" + value
+            }
+            //If not the last parameter, append &
+            if (!(parsedParams.size()  == index + 1)) {
+                parameterString += "&"
+            }
+        }
+
+
+
+        parameterString = (parameterString == "?" ? "" : parameterString)
+
+
+
         while (!isLastPage && start >= 0) {
 
 
-            HttpResponse<JsonNode> response = unirest.get(subPath).accept("application/json").queryString("start", start).asJson()
+            HttpResponse<JsonNode> response = unirest.get(subPath + parameterString ).accept("application/json").queryString("start", start).asJson()
 
+
+            assert response.status >= 200 && response.status < 300: "Error getting JSON from API got return status: " + response.status + " and body: " + response?.body?.toPrettyString()
 
             isLastPage = response?.body?.object?.has("isLastPage") ? response?.body?.object?.get("isLastPage") as boolean : true
             //start = response?.body?.object?.has("nextPageStart") ? response?.body?.object?.get("nextPageStart") as int : -1
@@ -97,17 +123,23 @@ trait BitbucketJsonEntity2 {
         }
 
 
-
         return result
 
 
     }
 
+    //TODO move to enum trait/interface
+    static String getSerializedName(Enum en) {
+
+        //https://clevercoder.net/2016/12/12/getting-annotation-value-enum-constant/
+        Field f = en.getClass().getField(en.name())
+        SerializedName a = f.getAnnotation(SerializedName.class)
+        return a.value()
+    }
 
     UnirestInstance getNewUnirest() {
         return instance.newUnirest
     }
-
 
 
     abstract boolean isValid()
