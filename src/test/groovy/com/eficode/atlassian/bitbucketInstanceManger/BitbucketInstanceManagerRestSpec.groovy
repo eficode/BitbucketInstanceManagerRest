@@ -1,11 +1,12 @@
 package com.eficode.atlassian.bitbucketInstanceManger
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo as BitbucketRepo
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketCommit as BitbucketCommit
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketChange as BitbucketChange
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch as BitbucketBranch
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketCommit
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketChange
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketBranch
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketCommit
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
@@ -151,15 +152,33 @@ class BitbucketInstanceManagerRestSpec extends Specification {
      */
     BitbucketRepo setupRepo(String projectName, String projectKey, String repoName) {
 
+        log.info("Setting of project and repo")
+        log.info("\tProject:" + projectName)
+        log.info("\tProject key:" + projectKey)
+        log.info("\tRepo:" + repoName)
+
+
         BitbucketInstanceManagerRest bb = setupBb()
 
 
         //Cleanup conflicting projects
-        bb.getProjects().findAll { it.name == projectName || it.key == projectKey }.each { bb.deleteProject(it, true) }
+        log.info("\tCleaning up conflicting projects")
+        ArrayList<BitbucketProject> allProjects = bb.getProjects()
+        log.info("\tInstance curretnly has ${allProjects.size()} projects (${allProjects.key.join(", ")})")
+        ArrayList<BitbucketProject> matching = allProjects.findAll { it.name == projectName || it.key == projectKey }
+        log.info("\tFound ${matching.size()} conflicitng projects")
+
+        matching.each { project ->
+            log.info("\t\tDeleting project:" + project.toString())
+            assert project.delete( true)
+            log.info("\t"*3 + "Deleted")
+        }
 
         //Setup new project and repo
         BitbucketProject sampleProject = bb.createProject(projectName, projectKey)
-        BitbucketRepo sampleRepo = bb.createRepo(sampleProject, repoName)
+        log.info("\tCreated new project:" + sampleProject.toString())
+        BitbucketRepo sampleRepo = sampleProject.createRepo(repoName)
+        log.info("\tCreated new repo:" + sampleRepo.toString())
 
         //Mirror-clone remote repo locally, push all of its branches to the new repo
         File localGitRepoDir = setupLocalGitRepo()
@@ -173,7 +192,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         return sampleRepo
     }
 
-    //@Ignore
+    @Ignore
     def "Test setup of basic application config"() {
 
         setup: "Remove container if it exists, create a new one"
@@ -211,7 +230,6 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         String fileName = "NewFile${System.currentTimeMillis().toString()[-3..-1]}.md"
 
         BitbucketRepo sampleRepo = setupRepo(projectName, projectKey, repoName)
-        BitbucketInstanceManagerRest bb = sampleRepo.parentObject as BitbucketInstanceManagerRest
 
 
         when:
@@ -250,11 +268,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketProject bbProject = bb.getProject(projectKey)
 
         if (bbProject) {
-            bb.deleteProject(bbProject, true)
+            bbProject.delete(true)
         }
 
         bbProject = bb.createProject(projectName, projectKey)
-        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
+        BitbucketRepo bbRepo = bbProject.createRepo(repoName)
 
         expect:
         //Reading the default settings of a newly created repo
@@ -299,11 +317,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketProject bbProject = bb.getProject(projectKey)
 
         if (bbProject) {
-            bb.deleteProject(bbProject, true)
+            bbProject.delete(true)
         }
 
         bbProject = bb.createProject(projectName, projectKey)
-        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
+        BitbucketRepo bbRepo = bbProject.createRepo(repoName)
 
         log.info("\tUsing Project:" + bbProject.key)
         log.info("\tUsing Repo:" + bbRepo.slug)
@@ -347,10 +365,10 @@ class BitbucketInstanceManagerRestSpec extends Specification {
                 bbRepo.getAllPullRequests().first().id,
                 bbRepo.getOpenPullRequests(masterBranch).first().id,
                 bbRepo.getAllPullRequests(masterBranch).first().id,
-        ].every { it == pr.id } : "Error getting the newly created PR"
+        ].every { it == pr.id }: "Error getting the newly created PR"
 
-        assert bbRepo.getPullRequests("DECLINED").empty : "Library found Declined PRs in the repo which shouldn't be there"
-        assert bbRepo.getPullRequests("MERGED").empty : "Library found Declined PRs in the repo which shouldn't be there"
+        assert bbRepo.getPullRequests("DECLINED").empty: "Library found Declined PRs in the repo which shouldn't be there"
+        assert bbRepo.getPullRequests("MERGED").empty: "Library found Declined PRs in the repo which shouldn't be there"
 
         log.info("\t\tGet requests succeeded in finding the PR")
 
@@ -361,6 +379,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then:
         prAfterMerge.isValid()
+        assert prAfterMerge.state == "MERGED"
 
         //Test 1. create pr, 2. modify source branch, 3 Attempt merge with pr from step 1 expect error
         //Test various enabled and disabled merge strategies. Test markdown with these.
@@ -380,11 +399,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketProject bbProject = bb.getProject(projectKey)
 
         if (bbProject) {
-            bb.deleteProject(bbProject, true)
+            bbProject.delete(true)
         }
 
         bbProject = bb.createProject(projectName, projectKey)
-        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
+        BitbucketRepo bbRepo = bbProject.createRepo( repoName)
 
         //Repo must contain something before branches can be created
         bbRepo.createFile("README.md", "master", "Initial content ${new Date()}", "Initial commit")
@@ -456,17 +475,18 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         log.info("\tWith events:" + expectedEvents.join(","))
 
         if (bbProject && cleanProject) {
-            bb.deleteProject(bbProject, true)
+            bbProject.delete(true)
             bbProject = bb.createProject(projectName, projectKey)
         } else if (!bbProject) {
             bbProject = bb.createProject(projectName, projectKey)
         }
 
 
-        BitbucketRepo bbRepo = bb.getRepos(bbProject).find { it.name == repoName }
+
+        BitbucketRepo bbRepo = bbProject.getRepos().find { it.name == repoName }
 
         if (!bbRepo) {
-            bbRepo = bb.createRepo(bbProject, repoName)
+            bbRepo = bbProject.createRepo(repoName)
         }
 
 
@@ -524,11 +544,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketProject bbProject = bb.getProject(projectKey)
 
         if (bbProject) {
-            bb.deleteProject(bbProject, true)
+            bbProject.delete(true)
         }
 
         bbProject = bb.createProject(projectName, projectKey)
-        BitbucketRepo bbRepo = bb.createRepo(bbProject, repoName)
+        BitbucketRepo bbRepo = bbProject.createRepo(repoName)
 
 
         when: "Setting default branch to non standard value"
@@ -606,7 +626,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         ArrayList<Integer> lengths = [36, 5, 10, 32, 33, 34, 35, 36, 37, 38, 39, 40, 62, 98, 500]
 
-        BitbucketChange change = new BitbucketChange(bb)
+        BitbucketChange change = new BitbucketChange()
         change.path = [toString: full,
                        parent  : parent,
                        name    : name]
@@ -645,12 +665,12 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
         bb.getProjects().each {
-            bb.deleteProject(it, true)
+            it.delete(true)
         }
 
 
         BitbucketProject sampleProject = bb.createProject("Sample Project", "SMP")
-        BitbucketRepo sampleRepo = bb.createRepo(sampleProject, BitbucketInstanceManagerRestSpec.simpleName)
+        BitbucketRepo sampleRepo = sampleProject.createRepo(BitbucketInstanceManagerRestSpec.simpleName)
 
         when: "When pushing the project git repo, to the new bitbucket project/repo"
         File localGitRepoDir = setupLocalGitRepo()
@@ -698,21 +718,22 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketInstanceManagerRest bb = setupBb()
 
         bb.getProjects().each {
-            bb.deleteProject(it, true)
+            it.delete(true)
         }
 
         BitbucketProject sampleProject = bb.createProject("Sample Project", "SMP")
 
         when:
-        BitbucketRepo firstRepo = bb.createRepo(sampleProject, "a repo with spaces")
+        BitbucketRepo firstRepo = sampleProject.createRepo("a repo with spaces")
 
         then:
         firstRepo != null
         firstRepo.isValid()
-        firstRepo == bb.getRepo("SMP", "a repo with spaces")
+
+        firstRepo == sampleProject.getRepo("a repo with spaces")
 
         when:
-        bb.deleteProject(sampleProject, false)
+        sampleProject.delete(false)
 
         then:
         Exception ex = thrown(Exception)
@@ -720,8 +741,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
         expect:
-        bb.deleteRepo(firstRepo)
-        bb.deleteProject(sampleProject, false)
+        firstRepo.delete()
+        sampleProject.delete(false)
 
 
         /*
@@ -751,7 +772,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         BitbucketInstanceManagerRest bb = setupBb()
 
         bb.getProjects().each {
-            bb.deleteProject(it, true)
+            it.delete(true)
         }
 
 
@@ -770,7 +791,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         newPrivProject.key == "NEWPRIV$rndNr"
         newPrivProject.name == "New Project $rndNr with priv API"
         newPrivProject == bb.getProject("NEWPRIV$rndNr")
-        bb.getRepos(newPrivProject).isEmpty()
+        newPrivProject.getRepos().isEmpty()
 
         when: "Creating project using public APIs"
         BitbucketProject newPubProject = bb.createProject("NEWPUB$rndNr")
@@ -780,7 +801,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         newPubProject.key == "NEWPUB$rndNr"
         newPubProject.name.contains(rndNr)
         newPubProject == bb.getProject("NEWPUB$rndNr")
-        bb.getRepos(newPubProject).isEmpty()
+        newPubProject.getRepos().isEmpty()
         !(newPubProject == newPrivProject)
 
         then: "Getting the raw data, it should match well with what the library returns"
@@ -804,7 +825,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
         cleanup:
-        bb.getProjects().each { bb.deleteProject(it, true) }
+        bb.getProjects().each {it.delete(true)}
 
 
     }

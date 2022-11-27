@@ -8,18 +8,17 @@ import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
 import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 
 import java.lang.reflect.Field
 import java.lang.reflect.Type
 
-trait BitbucketJsonEntity2 {
+trait BitbucketJsonEntity {
 
 
     //log.info("\n" + hooks.first().events.collect {"@SerializedName(\"$it\")\n${it.toString().toUpperCase().replace(":","_")}"}.sort().join(",\n") )
 
 
-    abstract static Logger log
+    static abstract Logger log
     BitbucketInstanceManagerRest instance
     abstract Object parent
     static Gson objectMapper = new Gson()
@@ -41,25 +40,23 @@ trait BitbucketJsonEntity2 {
             //Create key=value1&key=value2... for arrays
             if (value instanceof ArrayList) {
                 parameterString += value.collect { key + "=" + it }.join("&")
-            }else {
+            } else {
                 parameterString += key + "=" + value
             }
             //If not the last parameter, append &
-            if (!(parsedParams.size()  == index + 1)) {
+            if (!(parsedParams.size() == index + 1)) {
                 parameterString += "&"
             }
         }
 
 
-
         parameterString = (parameterString == "?" ? "" : parameterString)
-
 
 
         while (!isLastPage && start >= 0) {
 
 
-            HttpResponse<JsonNode> response = unirest.get(subPath + parameterString ).accept("application/json").queryString("start", start).asJson()
+            HttpResponse<JsonNode> response = unirest.get(subPath + parameterString).accept("application/json").queryString("start", start).asJson()
 
 
             assert response.status >= 200 && response.status < 300: "Error getting JSON from API got return status: " + response.status + " and body: " + response?.body?.toPrettyString()
@@ -99,10 +96,10 @@ trait BitbucketJsonEntity2 {
 
     }
 
-    static ArrayList<BitbucketJsonEntity2> fromJson(String rawJson, Class clazz, BitbucketInstanceManagerRest instance, Object parent) {
+    static ArrayList<BitbucketJsonEntity> fromJson(String rawJson, Class clazz, BitbucketInstanceManagerRest instance, Object parent) {
 
         Type type
-        ArrayList<BitbucketJsonEntity2> result
+        ArrayList<BitbucketJsonEntity> result
 
 
         if (rawJson.startsWith("[")) {
@@ -119,13 +116,23 @@ trait BitbucketJsonEntity2 {
 
         result.each {
             it.setParent(parent)
-            it.instance = instance
+            it.setInstance(instance)
         }
 
 
         return result
 
 
+    }
+
+    static ArrayList<Map> jsonPagesToGenerics(ArrayList jsonPages) {
+
+        return getObjectMapper().fromJson(jsonPages.toString(), TypeToken.getParameterized(ArrayList.class, Map).getType())
+    }
+
+    static Map jsonPagesToGenerics(JsonNode jsonNode) {
+
+        return getObjectMapper().fromJson(jsonNode.toString(), TypeToken.get(Map).getType())
     }
 
     //TODO move to enum trait/interface
@@ -142,7 +149,28 @@ trait BitbucketJsonEntity2 {
     }
 
 
+    String getBaseUrl() {
+        return instance.baseUrl
+    }
+
     abstract boolean isValid()
+
+    boolean isValidJsonEntity() {
+
+
+        assert this.getInstance() instanceof BitbucketInstanceManagerRest && this.getParent() != null
+        this.getInstance() instanceof BitbucketInstanceManagerRest && this.getParent() != null
+
+    }
+
+
+    /** --- GET --- **/
+    /**
+     * All static methods
+     *
+     * isValid uses isValidJsonEntity()
+     */
+
 
 
 }

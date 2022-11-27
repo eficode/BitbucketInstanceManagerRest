@@ -1,9 +1,9 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo as BitbucketRepo
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketProject as BitbucketProject
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch as BitbucketBranch
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject as BitbucketProject
+
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken

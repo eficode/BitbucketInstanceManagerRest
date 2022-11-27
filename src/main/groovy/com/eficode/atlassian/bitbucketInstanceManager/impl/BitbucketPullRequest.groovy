@@ -1,19 +1,19 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketBranch
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity2
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
 import kong.unirest.json.JSONObject
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
-class BitbucketPullRequest implements BitbucketJsonEntity2 {
+class BitbucketPullRequest implements BitbucketJsonEntity {
 
     BitbucketRepo repo
-
+    Logger log = LoggerFactory.getLogger(this.class)
     Integer id
     Integer version
     String title
@@ -34,6 +34,7 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
 
     @Override
     BitbucketRepo getParent() {
+
         return this.repo
     }
 
@@ -49,7 +50,8 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
     @Override
     boolean isValid() {
 
-        return repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author.size() >= 4 && instance instanceof BitbucketInstanceManagerRest
+
+        return isValidJsonEntity() && repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author.size() >= 4 && instance instanceof BitbucketInstanceManagerRest
 
     }
 
@@ -82,10 +84,10 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
 
     static BitbucketPullRequest createPullRequest(String title, String description, String fromRef, String toBranch, BitbucketRepo repo) {
 
-        UnirestInstance unirest = repo.parentObject.newUnirest
-        String prJson = createPullRequest(title, description, fromRef, toBranch, repo.projectKey, repo.repositorySlug, unirest)
 
-        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.parentObject as BitbucketInstanceManagerRest, repo)
+        String prJson = createPullRequest(title, description, fromRef, toBranch, repo.projectKey, repo.repositorySlug, repo.newUnirest)
+
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
 
         assert prs.size() == 1: "Library failed to parse response from API:" + prJson
         assert prs.first().isValid(): " Library returned invalid object"
@@ -109,6 +111,7 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
         ]
 
         HttpResponse responseRaw = unirest.post(url).body(body).contentType("application/json").asJson()
+        unirest.shutDown()
 
         assert responseRaw.status == 201: "Error creating Pull Request, API returned stauts ${responseRaw.status}, and body:" + responseRaw?.body
 
@@ -129,10 +132,9 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
 
     static ArrayList<BitbucketPullRequest> getPullRequests(BitbucketRepo repo, String state = "OPEN", BitbucketBranch targetBranch = null) {
 
-        UnirestInstance unirest = repo.parentObject.newUnirest
-        String prJson = getPullRequests(repo.projectKey, repo.repositorySlug, unirest, state, targetBranch?.id)
+        String prJson = getPullRequests(repo.projectKey, repo.repositorySlug, repo.newUnirest, state, targetBranch?.id)
 
-        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.parentObject as BitbucketInstanceManagerRest, repo)
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
 
         if (prs.empty) {
             return []
@@ -167,7 +169,60 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
         ArrayList<JsonNode> responseRaw = getJsonPages(unirest, url, maxPrs, ["state": state, at: branchId], true)
 
 
-        return responseRaw
+        return responseRaw.collect {it.toString()}
+
+    }
+
+
+
+    //TODO continue
+    /*
+    static ArrayList<BitbucketPullRequest> getPullRequestsWithCommit(BitbucketCommit commit, int maxPrs = 100 ) {
+
+
+        UnirestInstance unirest = commit.parentObject.newUnirest
+        String prJson = getPullRequestsWithCommit(commit.projectKey, commit.repositorySlug, commit.id,  unirest, maxPrs)
+
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, commit.repository.parentObject as BitbucketInstanceManagerRest, repo)
+
+        if (prs.empty) {
+            return []
+        }
+
+        assert prs.every { it.isValid() }: " Library returned invalid object"
+        return prs
+
+    }
+
+     */
+
+    static ArrayList<BitbucketPullRequest> getPullRequestsWithCommit(BitbucketRepo repo, String commitId, int maxPrs = 100 ) {
+
+
+        String prJson = getPullRequestsWithCommit(repo.projectKey, repo.repositorySlug,commitId,  repo.newUnirest, maxPrs)
+
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
+
+        if (prs.empty) {
+            return []
+        }
+
+        assert prs.every { it.isValid() }: " Library returned invalid object"
+        return prs
+
+    }
+
+
+
+
+    static ArrayList<String>getPullRequestsWithCommit(String projectKey, String repositorySlug, String commitId, UnirestInstance unirest, int maxPrs = 100) {
+
+        String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/commits/$commitId/pull-requests"
+
+        ArrayList<JsonNode> responseRaw = getJsonPages(unirest, url, maxPrs, [:], true)
+
+
+        return responseRaw.collect {it.toString()}
 
     }
 
@@ -186,10 +241,9 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
 
     static BitbucketPullRequest mergePullRequest(String prId, Integer prVersion, MergeStrategy mergeStrategy = null, BitbucketRepo repo) {
 
-        UnirestInstance unirest = repo.parentObject.newUnirest
-        String prJson = mergePullRequest(repo.projectKey, repo.slug, prId, prVersion, unirest, mergeStrategy ? mergeStrategy.getSerializedName() : "")
+        String prJson = mergePullRequest(repo.projectKey, repo.slug, prId, prVersion, repo.newUnirest, mergeStrategy ? mergeStrategy.getSerializedName() : "")
 
-        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.parentObject as BitbucketInstanceManagerRest, repo)
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
 
         assert prs.size() == 1: "Library failed to parse response from API:" + prJson
         assert prs.first().isValid(): " Library returned invalid object"
@@ -215,6 +269,7 @@ class BitbucketPullRequest implements BitbucketJsonEntity2 {
         strategyId != "" ? body.put("strategyId", strategyId) : null
 
         HttpResponse<JsonNode> responseRaw = unirest.post(url).body(body).contentType("application/json").asJson()
+        unirest.shutDown()
 
         if (responseRaw.status == 409) {
             String errorMsg
