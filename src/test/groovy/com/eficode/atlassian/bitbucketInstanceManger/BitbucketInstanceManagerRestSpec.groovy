@@ -10,6 +10,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketCommit
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhookBody
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhookInvocation
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.eficode.devstack.container.impl.BitbucketContainer
@@ -78,7 +79,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
 
         if (dockerRemoteHost) {
-            bitbucketContainer = new BitbucketContainer(baseUrl, dockerRemoteHost, "Environments/docker/dockerCert/")
+            bitbucketContainer = new BitbucketContainer(baseUrl, dockerRemoteHost, "Environments/docker/certs/")
             bitbucketContainer.jvmMaxRam = 12000
         } else {
             bitbucketContainer = new BitbucketContainer(baseUrl)
@@ -167,6 +168,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         ArrayList<BitbucketProject> allProjects = bb.getProjects()
         log.info("\tInstance curretnly has ${allProjects.size()} projects (${allProjects.key.join(", ")})")
         ArrayList<BitbucketProject> matching = allProjects.findAll { it.name == projectName || it.key == projectKey }
+
         log.info("\tFound ${matching.size()} conflicitng projects")
 
         matching.each { project ->
@@ -459,12 +461,12 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     def "Test webhook Config CRUD"(String hookName, ArrayList<WebhookEventType> events, String secret, boolean cleanProject) {
 
         setup:
-        log.info("Testing webhook CRUD actions")
+        log.info("Testing webhook config CRUD actions")
         log.info("\tHook Name:" + hookName)
-        String projectName = "Webhooks"
-        String projectKey = "hook"
-        String repoName = "CRUDing Webhooks"
-        String remoteUrl = "http://foo.bar"
+        String projectName = "Webhook config"
+        String projectKey = "hookconf"
+        String repoName = "CRUDing Webhook config"
+        String remoteUrl = "https://postman-echo.com/post"
 
         BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
         BitbucketProject bbProject = bb.getProject(projectKey)
@@ -533,29 +535,64 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
     def "Test webhook Body" () {
 
-        setup:
-        //TODO this should not use a static body as it is likely to fail in the future.
-        String sampleBody = "{\"eventKey\":\"repo:refs_changed\",\"date\":\"2022-11-28T09:30:48+0000\",\"actor\":{\"name\":\"admin\",\"emailAddress\":\"admin@admin.com\",\"active\":true,\"displayName\":\"admin\",\"id\":2,\"slug\":\"admin\",\"type\":\"NORMAL\",\"links\":{\"self\":[{\"href\":\"http://bitbucket.domain.se:7990/users/admin\"}]}},\"repository\":{\"slug\":\"test-commits-to-new-repo\",\"id\":3,\"name\":\"Test commits to new repo\",\"hierarchyId\":\"e21c13365c97881e5c73\",\"scmId\":\"git\",\"state\":\"AVAILABLE\",\"statusMessage\":\"Available\",\"forkable\":true,\"project\":{\"key\":\"HOOK\",\"id\":3,\"name\":\"Webhooks\",\"public\":false,\"type\":\"NORMAL\",\"links\":{\"self\":[{\"href\":\"http://bitbucket.domain.se:7990/projects/HOOK\"}]}},\"public\":false,\"archived\":false,\"links\":{\"clone\":[{\"href\":\"http://bitbucket.domain.se:7990/scm/hook/test-commits-to-new-repo.git\",\"name\":\"http\"},{\"href\":\"ssh://git@bitbucket.domain.se:7999/hook/test-commits-to-new-repo.git\",\"name\":\"ssh\"}],\"self\":[{\"href\":\"http://bitbucket.domain.se:7990/projects/HOOK/repos/test-commits-to-new-repo/browse\"}]}},\"changes\":[{\"ref\":{\"id\":\"refs/heads/master\",\"displayId\":\"master\",\"type\":\"BRANCH\"},\"refId\":\"refs/heads/master\",\"fromHash\":\"0000000000000000000000000000000000000000\",\"toHash\":\"15a2d1c7778463990235ad46526923c61226b461\",\"type\":\"ADD\"}]}"
+        setup: "Create a repo with a Webhook that listens for changes"
 
-        when:
-        BitbucketWebhookBody.getInstanceUrl(sampleBody)
-        BitbucketWebhookBody webhookBody = BitbucketWebhookBody.fromJson(sampleBody, setupBb())
-        String changelogMarkdown = ""
-        then:
-        webhookBody.repository
-        webhookBody.changes
+        log.info("Testing webhook actions")
+
+        String projectName = "Webhooks"
+        String projectKey = "hook"
+        String repoName = "CRUDing Webhooks"
+        String remoteUrl = "https://postman-echo.com/post"
+
+        BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
+        BitbucketProject project = bb.getProject(projectKey) ?: bb.createProject(projectName, projectKey)
+        BitbucketRepo repo = project.getRepo(repoName)
+
+        if (repo) {
+            repo.delete()
+        }
+        repo = project.createRepo(repoName)
+
+        BitbucketWebhook webhook = repo.createWebhook("Postman Echo", remoteUrl,[])
 
 
+        when: "When performing a change in repo"
+        log.info("Triggering Webhook")
+        BitbucketCommit initialCommit = repo.createFile("README.md", "master", "\nInitial SPOC Commit", "Initial SPOC Commit")
+        log.info("\tWebhook triggered at:" +  initialCommit.committerTimestamp)
 
-        webhookBody.changes.each { change ->
-            ArrayList<BitbucketCommit> commits = webhookBody.repository.getCommits(change.fromHash.every {it == "0"} ? "" : change.fromHash, change.toHash, 25)
+        BitbucketWebhookInvocation invocation = null
+        while (System.currentTimeMillis()  < initialCommit.committerTimestamp + 60000) {
+            log.info("\tWaiting for API to return invocation, waited: " + (System.currentTimeMillis() - initialCommit.committerTimestamp) + "ms")
+            sleep(1000)
 
-            commits.each { commit ->
-                changelogMarkdown += commit.toAtlassianWikiMarkup() + "\n"
+            invocation = webhook.getLastInvocation()
+            if (invocation != null) {
+                log.info("\tWebhook invocation finished after:" + (System.currentTimeMillis() - initialCommit.committerTimestamp) + "ms")
+                break
             }
         }
+        assert invocation != null : "Time out waiting for Webhook invocation after: " + (System.currentTimeMillis() - initialCommit.committerTimestamp) + "ms"
 
-        println("test")
+
+        then: "A successful webhook invocation should have been performed"
+        invocation.result.description == "200"
+        invocation.event == WebhookEventType.REPO_REFS_CHANGED
+
+
+
+        when:"Transforming the JSON body of the webhook into a BitbucketWebhookBody object"
+        BitbucketWebhookBody webhookBody = BitbucketWebhookBody.fromJson(invocation.request.body, setupBb())
+
+
+
+        then: "It should be valid and have rich child object"
+        BitbucketWebhookBody.getInstanceUrl(invocation.request.body) == baseUrl
+        webhookBody.repository.isValid()
+        webhookBody.repository.project.isValid()
+        webhookBody.repository.project.getRepo(repoName).getWebhooks().id.contains(webhook.id)
+        webhookBody.changes.size() == 1
+        webhookBody.repository.slug == repo.slug
 
 
     }
