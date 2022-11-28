@@ -1,21 +1,15 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest.BitbucketRepo as BitbucketRepo
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity2
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
-import com.google.gson.annotations.SerializedName
 import kong.unirest.HttpResponse
 import kong.unirest.UnirestInstance
 import org.slf4j.LoggerFactory
 import org.slf4j.Logger
 import unirest.shaded.com.google.gson.JsonObject
 
-import java.lang.reflect.Field
-
-
-class BitbucketWebhook implements BitbucketJsonEntity2 {
+class BitbucketWebhook implements BitbucketJsonEntity {
 
 
     int id
@@ -27,7 +21,7 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
     ArrayList<WebhookEventType> events
     boolean active
     BitbucketRepo repo
-    static Logger log = LoggerFactory.getLogger(this.class)
+    Logger log = LoggerFactory.getLogger(this.class)
 
 
     BitbucketWebhook(BitbucketRepo repo) {
@@ -50,7 +44,8 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
 
     @Override
     boolean isValid() {
-        name &&
+        isValidJsonEntity() &&
+                name &&
                 id &&
                 url &&
                 repo &&
@@ -85,14 +80,10 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
         //TODO Should use unirest from BitbucketRepo
         String url = "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.repositorySlug}/webhooks"
 
-        if (events) {
-            url += "?" + getEventNames(events).collect { "event=" + it }.join("&")
 
-        }
+        ArrayList<JsonObject> rawResponse = getJsonPages(unirest, url, maxReturns, [event: getEventNames(events)], true)
 
-        ArrayList<JsonObject> rawResponse = getJsonPages(unirest, url, maxReturns, true)
-
-        ArrayList<BitbucketWebhook> hooks = fromJson(rawResponse.toString(), BitbucketWebhook, repo.parentObject as BitbucketInstanceManagerRest, repo)
+        ArrayList<BitbucketWebhook> hooks = fromJson(rawResponse.toString(), BitbucketWebhook, repo.instance, repo)
 
         hooks.every { it.isValid() }
 
@@ -124,11 +115,12 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
         }
 
         HttpResponse responseRaw = unirest.post(url).body(outBody).contentType("application/json").asJson()
+        unirest.shutDown()
 
         assert responseRaw.status == 201: "Error creating Webhook, API returned stauts ${responseRaw.status}, and body:" + responseRaw?.body
 
 
-        ArrayList<BitbucketWebhook> hooks = fromJson(responseRaw.body.toString(), BitbucketWebhook, repo.parentObject as BitbucketInstanceManagerRest, repo)
+        ArrayList<BitbucketWebhook> hooks = fromJson(responseRaw.body.toString(), BitbucketWebhook, repo.instance, repo)
 
 
         assert hooks.size() == 1: "Library failed to parse response from API:" + responseRaw.body.toPrettyString()
@@ -146,7 +138,9 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
         assert webhook.isValid(): "Cant delete webhook ${webhook?.name}, it´s invalid"
         String url = "/rest/api/latest/projects/${webhook.repo.projectKey}/repos/${webhook.repo.repositorySlug}/webhooks/" + webhook.id
 
-        HttpResponse response = webhook.newUnirest.delete(url).asEmpty()
+        UnirestInstance unirest =  webhook.newUnirest
+        HttpResponse response = unirest.delete(url).asEmpty()
+        unirest.shutDown()
 
         assert response.status == 204: "Error deleting ${webhook.toString()}, API returned status ${response.status}"
 
@@ -155,16 +149,9 @@ class BitbucketWebhook implements BitbucketJsonEntity2 {
     }
 
 
+    //Get the name/value used by Bitbucket API to refer to an Event type
     static ArrayList<String> getEventNames(ArrayList<WebhookEventType> events) {
-        return events.collect { getEventName(it) }
-    }
-
-    static String getEventName(WebhookEventType event) {
-
-        //https://clevercoder.net/2016/12/12/getting-annotation-value-enum-constant/
-        Field f = event.getClass().getField(event.name())
-        SerializedName a = f.getAnnotation(SerializedName.class)
-        return a.value()
+        return events.collect { getSerializedName(it) }
     }
 
 
