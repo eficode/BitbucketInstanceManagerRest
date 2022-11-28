@@ -4,6 +4,7 @@ package com.eficode.atlassian.bitbucketInstanceManager.impl
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import kong.unirest.HttpResponse
+import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
 import org.slf4j.LoggerFactory
 import org.slf4j.Logger
@@ -25,7 +26,9 @@ class BitbucketWebhook implements BitbucketJsonEntity {
 
 
     BitbucketWebhook(BitbucketRepo repo) {
+
         this.repo = repo
+
     }
 
     @Override
@@ -155,6 +158,28 @@ class BitbucketWebhook implements BitbucketJsonEntity {
     }
 
 
+    /**
+     * Gets an object representing the last invocation of the webhook
+     * @return BitbucketWebhookInvocation
+     */
+    BitbucketWebhookInvocation getLastInvocation() {
+
+        log ?:  (this.log = LoggerFactory.getLogger(this.class))
+        log.info("Getting last invocation for webhook:" + toString())
+        ArrayList<JsonNode> rawInvocation = getJsonPages(newUnirest, "/rest/api/1.0/projects/${projectKey}/repos/${repo.slug}/webhooks/${id}/latest",1,[:],false)
+
+
+        if(rawInvocation.isEmpty() || rawInvocation.first().object.isEmpty()) {
+            log.info("\tWebhook has not been invoked")
+            return null
+        }
+
+        BitbucketWebhookInvocation invocation = BitbucketWebhookInvocation.fromJson(rawInvocation.first().toString())
+        log.info("\tGot invocation:" + invocation.id)
+        return invocation
+
+
+    }
 }
 
 

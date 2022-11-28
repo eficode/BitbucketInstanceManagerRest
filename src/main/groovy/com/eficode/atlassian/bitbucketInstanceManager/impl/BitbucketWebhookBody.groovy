@@ -14,7 +14,7 @@ import java.lang.reflect.Type
 /**
  * Intended to represent the body of a webhook sent by Bitbucket.
  *
- * Information in fields of complex types such as BitbucketRepo, BitbucketBranch etc
+ * Information in some fields of complex types such as, BitbucketBranch etc
  * will be lacking and only contain the data provided by the webhook body
  *
  */
@@ -24,7 +24,7 @@ class BitbucketWebhookBody {
     String date
     Actor actor
     BitbucketRepo repository
-    ArrayList<Changes> changes
+    ArrayList<Change> changes //TODO Should use BitbucketChange
 
     static Gson objectMapper = new Gson()
 
@@ -54,7 +54,7 @@ class BitbucketWebhookBody {
     }
 
     /**
-     * Get the webhook source instance URL
+     * Get the webhook source instance URL from a webhook json body
      * @param jsonString The raw webhook body
      * @return ex: http://bitbucket.domain.se:7990
      */
@@ -106,23 +106,8 @@ class BitbucketWebhookBody {
         LinkedHashMap links
     }
 
-    class Repository {
-        String slug
-        Integer id
-        String name
-        String hierarchyId
-        String scmId
-        String state
-        String statusMessage
-        boolean forkable
-        BitbucketProject project
-        @SerializedName("public")
-        boolean isPublic
-        boolean archived
-        Map links
-    }
 
-    class Changes {
+    class Change {
 
 
         BitbucketBranch ref
@@ -135,5 +120,7 @@ class BitbucketWebhookBody {
             return ref
         }
     }
+
+
 
 }
