@@ -30,7 +30,8 @@ class BitbucketWebhookBody {
 
 
     boolean isValid() {
-        return eventKey && repository && !changes.empty && changes.branch.every { it instanceof BitbucketBranch }
+
+        return eventKey && repository.isValid() && !changes.empty && changes.branch.every { it instanceof BitbucketBranch }
     }
 
     String toString() {
@@ -52,13 +53,46 @@ class BitbucketWebhookBody {
         return out
     }
 
-    static BitbucketWebhookBody fromJson(String jsonString) {
+    /**
+     * Get the webhook source instance URL
+     * @param jsonString The raw webhook body
+     * @return ex: http://bitbucket.domain.se:7990
+     */
+    static String getInstanceUrl(String jsonString ) {
+
+        Map bodyMap = getMapBody(jsonString)
+
+
+        ArrayList<String> hrefs = bodyMap?.repository?.links?.self?.href
+        String url = hrefs.size() ? hrefs.first() : null
+        url = url.contains("/projects") ? url.takeBefore("/projects") : null
+        return url
+    }
+
+    /**
+     * Gets a raw map body representation of the webhook
+     * @param json
+     * @return A map representation of the webhook
+     */
+    static Map getMapBody(String jsonString) {
+        return objectMapper.fromJson(jsonString, Map)
+    }
+
+    static BitbucketWebhookBody fromJson(String jsonString, BitbucketInstanceManagerRest instance) {
 
         assert jsonString[0] == "{": "Expected a Json object starting with \"{\""
 
+        assert instance.baseUrl == getInstanceUrl(jsonString) : "The URL of the webhook and the BitbucketInstanceManagerRest provided does no match"
 
         Type webhookBodyType = TypeToken.get(BitbucketWebhookBody).getType()
-        return objectMapper.fromJson(jsonString, webhookBodyType)
+        BitbucketWebhookBody body = objectMapper.fromJson(jsonString, webhookBodyType)
+
+        //Re-fetch repository to get a proper object
+        body.repository = instance.getProject(body.repository.projectKey).getRepo(body.repository.slug)
+
+
+        assert body.isValid() : "Error creating WebhookBody from input:" + jsonString
+        return body
     }
 
     class Actor {

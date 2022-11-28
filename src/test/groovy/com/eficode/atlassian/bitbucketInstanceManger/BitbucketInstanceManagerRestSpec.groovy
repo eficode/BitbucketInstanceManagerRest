@@ -9,6 +9,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketBranch
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketCommit
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhookBody
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.eficode.devstack.container.impl.BitbucketContainer
@@ -455,7 +456,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     }
 
 
-    def "Test webhook CRUD"(String hookName, ArrayList<WebhookEventType> events, String secret, boolean cleanProject) {
+    def "Test webhook Config CRUD"(String hookName, ArrayList<WebhookEventType> events, String secret, boolean cleanProject) {
 
         setup:
         log.info("Testing webhook CRUD actions")
@@ -525,6 +526,36 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         "All events"    | WebhookEventType.values()                    | null           | true
         "Random events" | WebhookEventType.values().shuffled().take(5) | null           | false
         "With a secret" | WebhookEventType.values().shuffled().take(7) | "super secret" | false
+
+
+    }
+
+
+    def "Test webhook Body" () {
+
+        setup:
+        //TODO this should not use a static body as it is likely to fail in the future.
+        String sampleBody = "{\"eventKey\":\"repo:refs_changed\",\"date\":\"2022-11-28T09:30:48+0000\",\"actor\":{\"name\":\"admin\",\"emailAddress\":\"admin@admin.com\",\"active\":true,\"displayName\":\"admin\",\"id\":2,\"slug\":\"admin\",\"type\":\"NORMAL\",\"links\":{\"self\":[{\"href\":\"http://bitbucket.domain.se:7990/users/admin\"}]}},\"repository\":{\"slug\":\"test-commits-to-new-repo\",\"id\":3,\"name\":\"Test commits to new repo\",\"hierarchyId\":\"e21c13365c97881e5c73\",\"scmId\":\"git\",\"state\":\"AVAILABLE\",\"statusMessage\":\"Available\",\"forkable\":true,\"project\":{\"key\":\"HOOK\",\"id\":3,\"name\":\"Webhooks\",\"public\":false,\"type\":\"NORMAL\",\"links\":{\"self\":[{\"href\":\"http://bitbucket.domain.se:7990/projects/HOOK\"}]}},\"public\":false,\"archived\":false,\"links\":{\"clone\":[{\"href\":\"http://bitbucket.domain.se:7990/scm/hook/test-commits-to-new-repo.git\",\"name\":\"http\"},{\"href\":\"ssh://git@bitbucket.domain.se:7999/hook/test-commits-to-new-repo.git\",\"name\":\"ssh\"}],\"self\":[{\"href\":\"http://bitbucket.domain.se:7990/projects/HOOK/repos/test-commits-to-new-repo/browse\"}]}},\"changes\":[{\"ref\":{\"id\":\"refs/heads/master\",\"displayId\":\"master\",\"type\":\"BRANCH\"},\"refId\":\"refs/heads/master\",\"fromHash\":\"0000000000000000000000000000000000000000\",\"toHash\":\"15a2d1c7778463990235ad46526923c61226b461\",\"type\":\"ADD\"}]}"
+
+        when:
+        BitbucketWebhookBody.getInstanceUrl(sampleBody)
+        BitbucketWebhookBody webhookBody = BitbucketWebhookBody.fromJson(sampleBody, setupBb())
+        String changelogMarkdown = ""
+        then:
+        webhookBody.repository
+        webhookBody.changes
+
+
+
+        webhookBody.changes.each { change ->
+            ArrayList<BitbucketCommit> commits = webhookBody.repository.getCommits(change.fromHash.every {it == "0"} ? "" : change.fromHash, change.toHash, 25)
+
+            commits.each { commit ->
+                changelogMarkdown += commit.toAtlassianWikiMarkup() + "\n"
+            }
+        }
+
+        println("test")
 
 
     }
