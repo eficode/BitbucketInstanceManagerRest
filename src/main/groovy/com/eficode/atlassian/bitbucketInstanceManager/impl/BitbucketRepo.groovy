@@ -57,15 +57,13 @@ class BitbucketRepo implements BitbucketJsonEntity {
         assert this.project instanceof BitbucketProject
     }
 
-    String toString() {
-        return project?.name + "/" + name
-    }
 
     boolean equals(Object object) {
 
         return object instanceof BitbucketRepo && this.name == object.name && this.id == object.id
     }
 
+    /** --- GET Meta Data --- **/
     String getProjectKey() {
         return project.key
     }
@@ -74,12 +72,33 @@ class BitbucketRepo implements BitbucketJsonEntity {
         return slug
     }
 
+    String toString() {
+        return project?.name + "/" + name
+    }
+
+    String getRepoBrowseUrl() {
+        try {
+            return links?.self?.first()?.href
+        } catch (Exception ignore) {
+            return null
+        }
+    }
+
+    String toAtlassianWikiMarkupUrl() {
+
+        return "[$name|$repoBrowseUrl]"
+    }
+
+    String toMarkdownUrl() {
+        return "[$name]($repoBrowseUrl)"
+    }
+
 
     /** --- GET --- **/
 
 
     static ArrayList<BitbucketRepo> getRepos(BitbucketProject project, long maxRepos = 50) {
-        ArrayList<String> rawRepos = getReposRaw(project.newUnirest, project.key, maxRepos )
+        ArrayList<String> rawRepos = getReposRaw(project.newUnirest, project.key, maxRepos)
 
         ArrayList<BitbucketRepo> repos = fromJson(rawRepos.toString(), BitbucketRepo, project.instance, project)
 
@@ -87,9 +106,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
     }
 
 
-
-
-    static ArrayList<String> getReposRaw( UnirestInstance unirest,String projectKey, long maxRepos = 100) {
+    static ArrayList<String> getReposRaw(UnirestInstance unirest, String projectKey, long maxRepos = 100) {
 
         String url = "/rest/api/1.0/projects/${projectKey}/repos"
 
@@ -103,14 +120,13 @@ class BitbucketRepo implements BitbucketJsonEntity {
     /** --- CREATE --- **/
 
 
-
-    static BitbucketRepo createRepo(BitbucketProject project, String repoName){
+    static BitbucketRepo createRepo(BitbucketProject project, String repoName) {
 
 
         String repoJson = createRepo(project.key, repoName, project.newUnirest)
 
         //Perhaps have to fetch a new representation of repo from API
-        return fromJson(repoJson,BitbucketRepo,project.instance,project).first() as BitbucketRepo
+        return fromJson(repoJson, BitbucketRepo, project.instance, project).first() as BitbucketRepo
 
 
     }
@@ -159,9 +175,6 @@ class BitbucketRepo implements BitbucketJsonEntity {
     }
 
 
-
-
-
     /** --- Branch CRUD --- **/
 
     /**
@@ -197,8 +210,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
         assert rawOut.size() == 1: "Error getting default branch for repo $name, API returned:" + rawOut
 
 
-
-        return BitbucketBranch.fromJson(rawOut.toString(), BitbucketBranch, this.instance,this).first() as BitbucketBranch
+        return BitbucketBranch.fromJson(rawOut.toString(), BitbucketBranch, this.instance, this).first() as BitbucketBranch
 
     }
 
@@ -232,7 +244,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
 
         unirest.shutDown()
 
-        return BitbucketBranch.fromJson(rawResponse.body.toString(), BitbucketBranch, this.instance,this).first() as BitbucketBranch
+        return BitbucketBranch.fromJson(rawResponse.body.toString(), BitbucketBranch, this.instance, this).first() as BitbucketBranch
 
     }
 
@@ -341,6 +353,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
     }
 
 
+
     String getFileContent(String repoFilePath, String branchName = "", String commitId = "") {
 
 
@@ -349,6 +362,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
         String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/browse/$repoFilePath"
 
         if (branchName) {
+
             url += "?at=" + URLEncoder.encode("refs/heads/$branchName", StandardCharsets.UTF_8)
         } else if (commitId) {
             url += "?at=" + commitId

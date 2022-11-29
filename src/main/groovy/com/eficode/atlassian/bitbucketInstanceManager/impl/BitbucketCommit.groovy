@@ -96,6 +96,7 @@ class BitbucketCommit implements BitbucketJsonEntity{
         String mainOut = "h2. Commit ID: [$displayId|${link}]"  + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
                 "*Author:* [~${author.name}] (Remote user: [${author.name}|${author.getProfileUrl(baseUrl)}])\n\n" +
                 "*Timestamp:* " + (committerTimestamp != 0 ? dateFormat.format(new Date(committerTimestamp as long)) : dateFormat.format(new Date(authorTimeStamp as long))) + "\n\n" +
+                "*Repository:* " + repository.toAtlassianWikiMarkupUrl() + "\n\n" +
                 "*Branch:* " + branch.displayId + "\n\n" +
                 "*Parents:* " + parentsWithLinks + "\n\n" +
                 "*Message:*\n\n"
@@ -126,6 +127,8 @@ class BitbucketCommit implements BitbucketJsonEntity{
         String mainOut = "## Commit ID: " + displayId + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
                 "**Author:** [${author.name}](${author.getProfileUrl(baseUrl)}) \n\n" +
                 "**Timestamp:** " + (committerTimestamp != 0 ? dateFormat.format(new Date(committerTimestamp as long)) : dateFormat.format(new Date(authorTimeStamp as long))) + "\n\n" +
+                "*Repository:* " + repository.toMarkdownUrl() + "\n\n" +
+                "*Branch:* " + branch.displayId + "\n\n" +
                 "**Parents:** " + parents.displayId.join(", ") + "\n\n" +
                 "**Message:**\n\n"
 
@@ -161,6 +164,9 @@ class BitbucketCommit implements BitbucketJsonEntity{
     ArrayList<BitbucketChange> getChanges(long maxChanges = 150) {
         return getChanges(repository.project.key, repository.slug, id, maxChanges)
     }
+
+
+
 
 
     ArrayList<BitbucketChange> getChanges(String projectKey, String repoSlug, String commitId, long maxChanges) {

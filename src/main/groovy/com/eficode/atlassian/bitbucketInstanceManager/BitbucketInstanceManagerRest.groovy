@@ -341,6 +341,31 @@ class BitbucketInstanceManagerRest {
     }
 
 
+    /** --- Repo Getters --- **/
+
+
+
+    BitbucketRepo getRepo(String projectKey, String repoNameOrSlug) {
+
+        BitbucketProject project = BitbucketProject.getProject(this, projectKey)
+
+        if (!project) {
+            log.warn("Could not find Project with key:" + projectKey)
+            return null
+        }
+
+        return getRepo(project, repoNameOrSlug)
+
+    }
+
+    static BitbucketRepo getRepo(BitbucketProject project, String repoNameOrSlug) {
+
+        return project.getRepo(repoNameOrSlug)
+    }
+
+
+
+
 
     /** --- GIT CRUD --- **/
 

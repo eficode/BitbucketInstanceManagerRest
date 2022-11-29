@@ -69,6 +69,10 @@ class BitbucketWebhookBody {
         return url
     }
 
+    BitbucketProject getProject(){
+        return repository?.project
+    }
+
     /**
      * Gets a raw map body representation of the webhook
      * @param json
