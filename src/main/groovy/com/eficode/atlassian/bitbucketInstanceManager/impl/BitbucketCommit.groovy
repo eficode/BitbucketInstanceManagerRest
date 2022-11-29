@@ -35,6 +35,17 @@ class BitbucketCommit implements BitbucketJsonEntity{
         return baseUrl + "/projects/${repository.projectKey}/repos/${repository.slug}/commits/$id"
     }
 
+
+    /**
+     * Gets the first timestamp between committerTimestamp and authorTimeStamp
+     * @return A Epoch MS long
+     */
+    long getTimeStamp() {
+
+        return [committerTimestamp, authorTimeStamp].findAll {it != 0}.sort().first()
+
+    }
+
     @Override
     BitbucketRepo getParent() {
         return this.repository
@@ -95,7 +106,7 @@ class BitbucketCommit implements BitbucketJsonEntity{
 
         String mainOut = "h2. Commit ID: [$displayId|${link}]"  + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
                 "*Author:* [~${author.name}] (Remote user: [${author.name}|${author.getProfileUrl(baseUrl)}])\n\n" +
-                "*Timestamp:* " + (committerTimestamp != 0 ? dateFormat.format(new Date(committerTimestamp as long)) : dateFormat.format(new Date(authorTimeStamp as long))) + "\n\n" +
+                "*Timestamp:* " + dateFormat.format(new Date(timeStamp as long)) + "\n\n" +
                 "*Repository:* " + repository.toAtlassianWikiMarkupUrl() + "\n\n" +
                 "*Branch:* " + branch.displayId + "\n\n" +
                 "*Parents:* " + parentsWithLinks + "\n\n" +
@@ -126,9 +137,9 @@ class BitbucketCommit implements BitbucketJsonEntity{
 
         String mainOut = "## Commit ID: " + displayId + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
                 "**Author:** [${author.name}](${author.getProfileUrl(baseUrl)}) \n\n" +
-                "**Timestamp:** " + (committerTimestamp != 0 ? dateFormat.format(new Date(committerTimestamp as long)) : dateFormat.format(new Date(authorTimeStamp as long))) + "\n\n" +
-                "*Repository:* " + repository.toMarkdownUrl() + "\n\n" +
-                "*Branch:* " + branch.displayId + "\n\n" +
+                "**Timestamp:** " + dateFormat.format(new Date(timeStamp as long)) + "\n\n" +
+                "**Repository:** " + repository.toMarkdownUrl() + "\n\n" +
+                "**Branch:** " + branch.displayId + "\n\n" +
                 "**Parents:** " + parents.displayId.join(", ") + "\n\n" +
                 "**Message:**\n\n"
 
