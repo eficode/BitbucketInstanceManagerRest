@@ -770,7 +770,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
 
         then:
         String changesMd = changes.collect { it.toMarkdown() }.join("\n")
-        true
+
 
 
         cleanup:
