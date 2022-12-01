@@ -23,14 +23,8 @@ trait BitbucketJsonEntity {
     abstract Object parent
     static Gson objectMapper = new Gson()
 
-    static ArrayList<JsonNode> getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, Map<String, Object> urlParameters = [:], boolean returnValueOnly = true) {
 
-
-        int start = 0
-        boolean isLastPage = false
-
-        ArrayList responses = []
-
+    static String createUrlParameterString(Map<String, Object> urlParameters) {
 
         Map<String, Object> parsedParams = urlParameters.findAll { it.value || it.value == 0 } // Remove empty values
 
@@ -51,6 +45,21 @@ trait BitbucketJsonEntity {
 
 
         parameterString = (parameterString == "?" ? "" : parameterString)
+
+        return parameterString
+    }
+
+    static ArrayList<JsonNode> getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, Map<String, Object> urlParameters = [:], boolean returnValueOnly = true) {
+
+
+        int start = 0
+        boolean isLastPage = false
+
+        ArrayList responses = []
+
+
+        String parameterString = createUrlParameterString(urlParameters)
+
 
 
         while (!isLastPage && start >= 0) {

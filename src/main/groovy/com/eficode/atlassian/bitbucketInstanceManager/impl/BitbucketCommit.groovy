@@ -83,6 +83,7 @@ class BitbucketCommit implements BitbucketJsonEntity{
         return "🔗"
     }
 
+
     String toString() {
 
         return displayId + " - " + message
@@ -177,9 +178,6 @@ class BitbucketCommit implements BitbucketJsonEntity{
     }
 
 
-
-
-
     ArrayList<BitbucketChange> getChanges(String projectKey, String repoSlug, String commitId, long maxChanges) {
 
 
@@ -207,6 +205,8 @@ class BitbucketCommit implements BitbucketJsonEntity{
     }
 
 
+
+
     static ArrayList getRawChanges(UnirestInstance instance, String projectKey, String repoSlug, String commitId, long maxChanges, String since = null) {
 
         String url = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/commits/$commitId/changes"
@@ -216,6 +216,37 @@ class BitbucketCommit implements BitbucketJsonEntity{
         return getJsonPages(instance, url, maxChanges)
 
     }
+
+
+    /**
+     * Get PRs that involve the commit
+     * IE, commits that are part of the merge suggested by the PR
+     * @param maxPRs Max nr of PRs to return
+     * @return
+     */
+    ArrayList<BitbucketPullRequest> getPullRequestsInvolvingCommit( long maxPRs = 25) {
+
+        return BitbucketPullRequest.getPullRequestsInvolvingCommit(repository, id, maxPRs)
+
+    }
+
+
+    /**
+     * Returns true if this commit the merge/rebase/squash due to a PR.
+     * @return
+     */
+    boolean isAPrMerge() {
+
+        ArrayList<BitbucketPullRequest>relatedPrs = getPullRequestsInvolvingCommit(50)
+
+        BitbucketPullRequest mergeCommit = relatedPrs.find {it.mergeCommit.id == this.id}
+
+
+        return mergeCommit != null
+
+    }
+
+
 
 
     /**
@@ -237,25 +268,22 @@ class BitbucketCommit implements BitbucketJsonEntity{
         //BitbucketBranch.fromRaw(branchesRaw, repository).first()
     }
 
+    BitbucketCommit refreshInfo() {
+        return getCommit(this.repository, this.id)
+    }
 
-    /**
+    static BitbucketCommit getCommit(BitbucketRepo repo, String commitId) {
 
-     static ArrayList<BitbucketCommit> fromRaw(ArrayList rawCommits, BitbucketRepo repo) {
-     ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, repo.parentObject)
-     bitbucketCommits.each { commit ->
-     //Set repo
-     commit.repository = repo
-     //Remove all but id and displayId, as getCommit and getCommits return different amount of info
-     commit.parents.each { parentMap ->
-     parentMap.removeAll { key, value ->
-     !((key as String) in ["id", "displayId"])
-     }
-     }
+        String url = "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.slug}/commits/" + commitId
 
-     }
+        ArrayList rawCommits = getJsonPages(repo.newUnirest, url, 1, [:], false)
 
-     return bitbucketCommits
+        assert rawCommits.size() == 1: "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
 
-     }
-     */
+
+        BitbucketCommit commit = fromJson(rawCommits.toString(), BitbucketCommit, repo.instance, repo).first() as BitbucketCommit
+        return commit
+
+    }
+
 }

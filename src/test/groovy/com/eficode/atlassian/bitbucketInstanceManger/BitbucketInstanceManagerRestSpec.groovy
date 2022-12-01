@@ -11,6 +11,8 @@ import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhookBody
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhookInvocation
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketPrParticipant
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.eficode.devstack.container.impl.BitbucketContainer
@@ -307,11 +309,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     }
 
 
-    def "Test PR CRUD"() {
+    def "Test PR CRUD"(MergeStrategy mergeStrategy) {
 
 
         setup:
-        log.info("Testing Pull Request Config CRUD actions using Bitbucket API")
+        log.info("Testing Pull Request CRUD actions using Bitbucket API")
         String projectName = "Pull Request Actions"
         String projectKey = "PRA"
         String repoName = "CRUDing PRs"
@@ -326,8 +328,11 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         bbProject = bb.createProject(projectName, projectKey)
         BitbucketRepo bbRepo = bbProject.createRepo(repoName)
 
+        bbRepo.setEnabledMergeStrategies(mergeStrategy, [mergeStrategy])
+
         log.info("\tUsing Project:" + bbProject.key)
         log.info("\tUsing Repo:" + bbRepo.slug)
+        log.info("\tUsing merge strategy:" + mergeStrategy)
 
         String expectedFileContent = "Initial file content"
         BitbucketCommit creatingFileCommit = bbRepo.createFile("README.md", "master", expectedFileContent, "Creating the file in the master branch")
@@ -368,10 +373,13 @@ class BitbucketInstanceManagerRestSpec extends Specification {
                 bbRepo.getAllPullRequests().first().id,
                 bbRepo.getOpenPullRequests(masterBranch).first().id,
                 bbRepo.getAllPullRequests(masterBranch).first().id,
+                firstUpdateCommit.getPullRequestsInvolvingCommit().first().id,
+                secondUpdateCommit.getPullRequestsInvolvingCommit().first().id,
+
         ].every { it == pr.id }: "Error getting the newly created PR"
 
         assert bbRepo.getPullRequests("DECLINED").empty: "Library found Declined PRs in the repo which shouldn't be there"
-        assert bbRepo.getPullRequests("MERGED").empty: "Library found Declined PRs in the repo which shouldn't be there"
+        assert bbRepo.getPullRequests("MERGED").empty: "Library found MERGED PRs in the repo which shouldn't be there"
 
         log.info("\t\tGet requests succeeded in finding the PR")
 
@@ -383,12 +391,106 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         then:
         prAfterMerge.isValid()
         assert prAfterMerge.state == "MERGED"
+        assert bbRepo.getPullRequests("MERGED").id == [pr.id]
+        assert prAfterMerge.getMergeCommit() != null
+        assert prAfterMerge.getMergeCommit().id == masterBranch.refreshInfo().getLatestCommit()
+        assert prAfterMerge.state == pr.refreshInfo().state
+        assert prAfterMerge.getMergeCommit().id == pr.refreshInfo().getMergeCommit().id
+        assert bbRepo.getAllPullRequests().find {it.id == pr.id}.mergeCommit.id == prAfterMerge.getMergeCommit().id
+        assert prAfterMerge.getMergeCommit().isAPrMerge()
+        assert bbRepo.getCommits(10).findAll {it.isAPrMerge()}.size() == 1
 
-        //Test 1. create pr, 2. modify source branch, 3 Attempt merge with pr from step 1 expect error
-        //Test various enabled and disabled merge strategies. Test markdown with these.
-        //Add refresh to pr object
+        where:
+        mergeStrategy << MergeStrategy.values()
 
     }
+
+    def "Test PR Approval"() {
+
+        setup:
+        log.info("Testing Pull Request approval actions using Bitbucket API")
+        String projectName = "Pull Request Actions"
+        String projectKey = "PRA"
+        String repoName = "CRUDing PR Approval"
+        String otherUserName = "otherUser"
+
+        BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(restAdmin, restPw, baseUrl)
+        BitbucketProject bbProject = bb.getProject(projectKey)
+
+        if (bbProject) {
+            bbProject.delete(true)
+        }
+
+        bbProject = bb.createProject(projectName, projectKey)
+        BitbucketRepo bbRepo = bbProject.createRepo(repoName)
+
+        BitbucketUser otherUser = bb.getUsers(otherUserName,1).find ()
+        if (!otherUser) {
+            otherUser = bb.createUser(otherUserName+"@email.com",otherUserName.reverse(), otherUserName, otherUserName )
+        }
+        assert otherUser.setUserGlobalPermission("SYS_ADMIN") : "Error setting $otherUser to Sys Admin"
+
+
+        log.info("\tUsing Project:" + bbProject.key)
+        log.info("\tUsing Repo:" + bbRepo.slug)
+
+
+        String expectedFileContent = "Initial file content"
+        BitbucketCommit creatingFileCommit = bbRepo.createFile("README.md", "master", expectedFileContent, "Creating the file in the master branch")
+
+
+        BitbucketBranch masterBranch = bbRepo.getAllBranches().find { it.displayId == "master" }
+        log.info("\tCreated file ${creatingFileCommit.getChanges().first().getFileNameTruncated(60)} in " + masterBranch.id)
+        BitbucketBranch secondBranch = bbRepo.createBranch("a-second-branch", "master")
+        log.info("\tCreated branch:" + secondBranch.id)
+
+        expectedFileContent += "\n\nFirst update from second branch"
+        BitbucketCommit firstUpdateCommit = bbRepo.appendFile("README.md", "a-second-branch", expectedFileContent, "A commit in separate branch")
+        log.info("\tUpdated file ${firstUpdateCommit.getChanges().first().getFileNameTruncated(60)} in " + secondBranch.id)
+
+        expectedFileContent += "\n\nSecond update from second branch"
+        BitbucketCommit secondUpdateCommit = bbRepo.appendFile("README.md", secondBranch.displayId, expectedFileContent, "A second commit in the separate branch")
+        log.info("\tUpdated file ${firstUpdateCommit.getChanges().first().getFileNameTruncated(60)} again in " + secondBranch.id)
+        secondBranch = secondBranch.refreshInfo() //Needed to update latestCommit in the branch
+
+        when: "When creating a pull request from a branch with two new commits"
+        BitbucketPullRequest pr = bbRepo.createPullRequest(secondBranch, masterBranch)
+        log.info("\tCreated PR ${pr.title} from ${secondBranch.id} to ${masterBranch.id}")
+
+        then:
+        assert pr.author.user.name == "admin" : "Unexpected author of PR"
+        assert pr.approvers.size() == 0 : "A new PR should have no Approvers"
+        assert pr.reviewers.size() == 0 : "A new PR should have no Reviewers"
+
+        when: "Adding a user as a Reviewer"
+        BitbucketPrParticipant participant = pr.addReviewer(otherUser)
+        pr = pr.refreshInfo()
+
+        then: "A refreshed version of the PR should have the user as a reviewer"
+        pr.reviewers.first().user.id == otherUser.id
+        pr.reviewers.first().role == "REVIEWER"
+        pr.reviewers.first().status == "UNAPPROVED"
+        participant.isValid()
+
+        when: "Removing the reviewer"
+        pr.removeReviewer(participant)
+        pr = pr.refreshInfo()
+
+        then: "The PR should have no more Reviewers"
+        pr.reviewers.isEmpty()
+
+        when:
+        participant = pr.setApprovalStatus(otherUserName, otherUserName.reverse(), "APPROVED")
+        pr = pr.refreshInfo()
+
+        then:
+        participant.user.name == otherUserName
+        pr.getApprovers().user.id == [otherUser.id]
+        pr.getApprovers().status == ["APPROVED"]
+
+
+    }
+
 
 
     def "Test branch CRUD"() {

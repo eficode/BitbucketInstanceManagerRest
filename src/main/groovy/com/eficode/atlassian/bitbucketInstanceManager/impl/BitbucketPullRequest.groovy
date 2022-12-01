@@ -2,6 +2,8 @@ package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketPrParticipant
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
@@ -26,10 +28,11 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
     Long updatedDate
     BitbucketBranch fromRef
     BitbucketBranch toRef
-    Map author
-    ArrayList reviewers
-    ArrayList participants
+    BitbucketPrParticipant author
+    ArrayList<BitbucketPrParticipant> reviewers
+    ArrayList<BitbucketPrParticipant> participants
     Map links
+    Map properties
 
 
     @Override
@@ -51,7 +54,7 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
     boolean isValid() {
 
 
-        return isValidJsonEntity() && repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author.size() >= 4 && instance instanceof BitbucketInstanceManagerRest
+        return isValidJsonEntity() && repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author && instance instanceof BitbucketInstanceManagerRest
 
     }
 
@@ -119,7 +122,25 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
 
     }
 
-    /** --- GET --- **/
+
+    /** --- GET PRs--- **/
+
+    BitbucketPullRequest refreshInfo() {
+        return getPullRequest(repo, id)
+    }
+
+    static BitbucketPullRequest getPullRequest(BitbucketRepo repo, long id) {
+
+        ArrayList<String> rawPr = getJsonPages(repo.newUnirest, "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.repositorySlug}/pull-requests/$id", 1, [:], false)
+
+        ArrayList<BitbucketPullRequest> prs = fromJson(rawPr.first().toString(), BitbucketPullRequest, repo.instance, repo)
+
+        if (prs.size() == 1) {
+            return prs.first()
+        }
+        return null
+
+    }
 
     /**
      * Get Pull requests
@@ -169,37 +190,22 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
         ArrayList<JsonNode> responseRaw = getJsonPages(unirest, url, maxPrs, ["state": state, at: branchId], true)
 
 
-        return responseRaw.collect {it.toString()}
+        return responseRaw.collect { it.toString() }
 
     }
 
 
-
-    //TODO continue
-    /*
-    static ArrayList<BitbucketPullRequest> getPullRequestsWithCommit(BitbucketCommit commit, int maxPrs = 100 ) {
-
-
-        UnirestInstance unirest = commit.parentObject.newUnirest
-        String prJson = getPullRequestsWithCommit(commit.projectKey, commit.repositorySlug, commit.id,  unirest, maxPrs)
-
-        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, commit.repository.parentObject as BitbucketInstanceManagerRest, repo)
-
-        if (prs.empty) {
-            return []
-        }
-
-        assert prs.every { it.isValid() }: " Library returned invalid object"
-        return prs
-
-    }
-
+    /**
+     * Get the Pull Requests that involve a commit
+     * @param repo The repo where the commit is
+     * @param commitId The full commit id
+     * @param maxPrs Max number of PRs to return
+     * @return An array of PR objects
      */
+    static ArrayList<BitbucketPullRequest> getPullRequestsInvolvingCommit(BitbucketRepo repo, String commitId, long maxPrs = 100) {
 
-    static ArrayList<BitbucketPullRequest> getPullRequestsWithCommit(BitbucketRepo repo, String commitId, int maxPrs = 100 ) {
 
-
-        String prJson = getPullRequestsWithCommit(repo.projectKey, repo.repositorySlug,commitId,  repo.newUnirest, maxPrs)
+        String prJson = getPullRequestsInvolvingCommit(repo.projectKey, repo.repositorySlug, commitId, repo.newUnirest, maxPrs)
 
         ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
 
@@ -213,16 +219,72 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
     }
 
 
-
-
-    static ArrayList<String>getPullRequestsWithCommit(String projectKey, String repositorySlug, String commitId, UnirestInstance unirest, int maxPrs = 100) {
+    /**
+     * Get the Pull Requests that involve a commit
+     * @param projectKey The project where the commit is
+     * @param repositorySlug The repo where the commit is
+     * @param commitId The full commit id
+     * @param unirest A unirest instance to use
+     * @param maxPrs Max number of PRs to return
+     * @return An array of PR json strings
+     */
+    static ArrayList<String> getPullRequestsInvolvingCommit(String projectKey, String repositorySlug, String commitId, UnirestInstance unirest, long maxPrs = 100) {
 
         String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/commits/$commitId/pull-requests"
 
         ArrayList<JsonNode> responseRaw = getJsonPages(unirest, url, maxPrs, [:], true)
 
 
-        return responseRaw.collect {it.toString()}
+        return responseRaw.collect { it.toString() }
+
+    }
+
+
+    /** --- GET METADATA--- **/
+
+
+    String toString() {
+        return repo.toString() + ": " + title + " (ID: ${this.id})"
+    }
+
+
+    ArrayList<BitbucketPullRequestActivity> getPrActivities(long maxActivities = 25) {
+        return BitbucketPullRequestActivity.getPrActivities(this, maxActivities)
+    }
+
+    /**
+     * Get the resulting commit after a PR has been merged
+     * @return a BitbucketCommit object
+     */
+    BitbucketCommit getMergeCommit() {
+
+        ArrayList<BitbucketPullRequestActivity> activities = getPrActivities(50).findAll { it.commit != null && it.action == "MERGED" }
+
+
+        if (activities.size() > 1) {
+            throw new InputMismatchException("Unexpected data from Bitbucket, PR has more than 1 merging commit. PR: ${this.toString()}, Commits: ${activities.commit.id.join(",")}")
+        } else if (activities.size() == 1) {
+            return activities.first().commit
+        } else {
+            return null
+        }
+
+
+    }
+
+    /**
+     * Get all Reviewers who have approved this PR up until the latest commit
+     * @return
+     */
+    ArrayList<BitbucketPrParticipant> getApprovers() {
+
+        return reviewers.findAll {
+            it.status == "APPROVED" &&
+                    it.approved &&
+                    it.role == "REVIEWER" &&
+                    it.lastReviewedCommitId == this.fromRef.latestCommit
+        }
+
 
     }
 
@@ -252,7 +314,7 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
     }
 
     /**
-     * Merge en exsiting PR
+     * Merge en existing PR
      * @param projectKey Name of project where the PR is
      * @param repositorySlug Slug of Repo where PR is
      * @param prId Id of PR
@@ -289,6 +351,188 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
 
         return responseRaw.body
 
+
+    }
+
+
+    /** --- CRUD Approvals --- **/
+
+
+    /**
+     * Set approval status of this PR for a different user
+     * @param userName User name of the other user
+     * @param password Password of the other user
+     * @param status "UNAPPROVED", "NEEDS_WORK", "APPROVED"
+     * @return a BitbucketPrParticipant-object
+     */
+    BitbucketPrParticipant setApprovalStatus(String userName, String password, String status) {
+
+        BitbucketInstanceManagerRest bb = new BitbucketInstanceManagerRest(userName, password, this.instance.baseUrl)
+
+        BitbucketUser currentUser = bb.getCurrentUser()
+
+        String rawResponse = setApprovalStatus(bb.newUnirest, repo.projectKey, repo.slug, id, currentUser.slug,status)
+
+        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawResponse,BitbucketPrParticipant, instance, instance).first() as BitbucketPrParticipant
+
+        //Re-fetching so that the correct user is logged-in in the new object
+        ArrayList<BitbucketPrParticipant> reviewers = this.refreshInfo().getReviewers()
+        BitbucketPrParticipant reFetched = reviewers.find {
+            it.user.slug.equalsIgnoreCase(currentUser.slug)
+        }
+        return reFetched
+
+
+
+    }
+
+
+    /**
+     * Set the approval status of this PR as the currently logged in user
+     * @param userSlug The currently logged in user
+     * @param status "UNAPPROVED", "NEEDS_WORK", "APPROVED"
+     * @return a BitbucketPrParticipant-object
+     */
+    BitbucketPrParticipant setApprovalStatus(String userSlug, String status) {
+
+        String rawResponse = setApprovalStatus(newUnirest, repo.projectKey, repo.slug, id, userSlug,status)
+
+        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawResponse,BitbucketPrParticipant, instance, instance).first() as BitbucketPrParticipant
+
+        return participant
+
+    }
+
+    /**
+     * Set approval status on a PR for the current user
+     * @param unirest The unirest instanstce to use, NOTE this instance must be logged in as the userSlug-user
+     * @param projectKey The project where the PR is
+     * @param repositorySlug The repo where the PR is
+     * @param prId The ID of the pr
+     * @param userSlug Slug of the user
+     * @param status "UNAPPROVED", "NEEDS_WORK", "APPROVED"
+     * @return A string representation of BitbucketPrParticipant
+     */
+    static String setApprovalStatus(UnirestInstance unirest, String projectKey, String repositorySlug, long prId,String userSlug, String status) {
+
+        assert status in ["UNAPPROVED", "NEEDS_WORK", "APPROVED"] : "Unknown Approval status submitted"
+
+        String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/pull-requests/$prId/participants/$userSlug"
+
+        HttpResponse<JsonNode> rawResponse = unirest.put(url).body(["status" : status]).contentType("application/json").asJson()
+        unirest.shutDown()
+
+
+        Map rawOut = jsonPagesToGenerics(rawResponse.body)
+        if (rawOut.containsKey("errors")) {
+            throw new Exception(rawOut.errors.collect { it?.message }?.join(", "))
+        }
+
+        assert rawResponse.status == 200: "API returned unexpected output when setting approval status $status on PR $prId for user $userSlug:" + rawResponse?.body?.toString()
+
+        return rawResponse.body
+
+    }
+
+
+    /** --- CRUD Reviewers --- **/
+
+
+    /**
+     * Remove a reviewer from this PR
+     * @param participant a BitbucketPrParticipant-object
+     * @return true on success
+     */
+    boolean removeReviewer(BitbucketPrParticipant participant) {
+        return removeReviewer(newUnirest, repo.projectKey, repo.slug, id, participant.user.slug)
+    }
+
+    /**
+     * Remove a reviewer from this PR
+     * @param user a BitbucketUser-object
+     * @return true on success
+     */
+    boolean removeReviewer(BitbucketUser user) {
+        return removeReviewer(newUnirest, repo.projectKey, repo.slug, id, user.slug)
+    }
+
+
+    /**
+     * Remove a reviewer from a pull request
+     * @param unirest a Unirest instance to use to make the call
+     * @param projectKey The project where the pr is
+     * @param repositorySlug The repo where the pr is
+     * @param prId The id of the PR
+     * @param userName The username of the user to add
+     * @return true on success
+     */
+    static boolean removeReviewer(UnirestInstance unirest, String projectKey, String repositorySlug, long prId,String userSlug) {
+
+        String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/pull-requests/$prId/participants/$userSlug"
+
+        HttpResponse<JsonNode> rawResponse = unirest.delete(url).asJson()
+        unirest.shutDown()
+
+
+        Map rawOut = jsonPagesToGenerics(rawResponse.body)
+        if (rawOut.containsKey("errors")) {
+            throw new Exception(rawOut.errors.collect { it?.message }?.join(", "))
+        }
+
+        assert rawResponse.status == 204: "API returned unexpected output when removing Reviewer $userSlug from PR: $prId:" + rawResponse?.body?.toString()
+
+        return true
+
+    }
+
+    /**
+     * Add a reviewer to this pull request
+     * @param user The user to add
+     * @return A BitbucketPrParticipant representing the participant
+     */
+    BitbucketPrParticipant addReviewer(BitbucketUser user){
+
+        String rawJsonResponse = addReviewer(instance.newUnirest, repo.projectKey, repo.slug, id, user.name)
+        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawJsonResponse,BitbucketPrParticipant, user.instance, user.instance).first() as BitbucketPrParticipant
+        return  participant
+
+    }
+
+
+    /**
+     * Add a reviewer to a pull request
+     * @param unirest a Unirest instance to use to make the call
+     * @param projectKey The project where the pr is
+     * @param repositorySlug The repo where the pr is
+     * @param prId The id of the PR
+     * @param userName The userName of the user to add
+     * @return A JSON string representing BitbucketPrParticipant
+     */
+    static String addReviewer(UnirestInstance unirest, String projectKey, String repositorySlug, long prId,String userName) {
+
+
+
+        String url = "/rest/api/latest/projects/${projectKey}/repos/${repositorySlug}/pull-requests/$prId/participants"
+
+        Map<String, Object> body = [
+                user : [name: userName],
+                role :"REVIEWER",
+        ]
+
+
+        HttpResponse<JsonNode> rawResponse = unirest.post(url).body(body).contentType("application/json").asJson()
+        unirest.shutDown()
+
+
+        Map rawOut = jsonPagesToGenerics(rawResponse.body)
+
+        if (rawOut.containsKey("errors")) {
+            throw new Exception(rawOut.errors.collect { it?.message }?.join(", "))
+        }
+
+        assert rawResponse.status == 200: "API returned unexpected output when adding Reviewer $userName to PR: $prId:" + rawResponse?.body?.toString()
+
+        return rawResponse.body
 
     }
 

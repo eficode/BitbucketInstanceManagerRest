@@ -5,6 +5,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import com.google.gson.Gson
@@ -364,7 +365,64 @@ class BitbucketInstanceManagerRest {
     }
 
 
+    /** --- User Crud --- **/
 
+
+    /**
+     * Creates a new user
+     * @param email
+     * @param password required if notify == false
+     * @param displayName
+     * @param userName
+     * @param notify If true instead of requiring a password,<br>
+     *      the created user will be notified via email their account has been created and requires a password to be reset.<br>
+     *      This option can only be used if a mail server has been configured.
+     * @param addToDefaultGroup
+     * @return
+     */
+    BitbucketUser createUser(String email, String password, String displayName, String userName, boolean notify = false,  boolean addToDefaultGroup = true) {
+
+        return BitbucketUser.createUser(this, email, password,displayName, userName, notify, addToDefaultGroup)
+    }
+
+    /**
+     * Get users matching the filter
+
+     * @param filter only users with usernames, display name or email addresses containing the supplied string will be returned.
+     * @param maxUsers Max number of users to return
+     * @return An array of BitbucketUser objects
+     */
+    ArrayList<BitbucketUser>getUsers(String filter, long maxUsers) {
+
+        return BitbucketUser.getUsers(this, filter, maxUsers)
+    }
+
+    /**
+     * Set the global permissions of several users
+     * @param users userNames of the users
+     * @param permission The permission that the users should have: LICENSED_USER, PROJECT_CREATE, ADMIN, SYS_ADMIN
+     * @return true on success
+     */
+    boolean setUsersGlobalPermission( ArrayList<BitbucketUser> users, String permission) {
+
+        return BitbucketUser.setUsersGlobalPermission(this, users, permission)
+    }
+
+
+    BitbucketUser getCurrentUser() {
+
+        UnirestInstance unirest = newUnirest
+        String userSlug = unirest.get("/plugins/servlet/applinks/whoami").asString().body
+
+        unirest.shutDown()
+
+
+
+        BitbucketUser user =  getUsers(userSlug, 25).find {it.slug.equalsIgnoreCase(userSlug)}
+
+        return user
+
+    }
 
 
     /** --- GIT CRUD --- **/

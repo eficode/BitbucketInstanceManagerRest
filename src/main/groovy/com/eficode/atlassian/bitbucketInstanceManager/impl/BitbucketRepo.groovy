@@ -316,15 +316,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
 
     BitbucketCommit getCommit(String commitId) {
 
-        String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/commits/" + commitId
-
-        ArrayList rawCommits = getJsonPages(newUnirest, url, 1, [:], false)
-
-        assert rawCommits.size() == 1: "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
-
-
-        BitbucketCommit commit = BitbucketCommit.fromJson(rawCommits.toString(), BitbucketCommit, instance, this).first() as BitbucketCommit
-        return commit
+       return BitbucketCommit.getCommit(this, commitId)
 
     }
 
@@ -630,11 +622,11 @@ class BitbucketRepo implements BitbucketJsonEntity {
      * @param toBranch Destination branch, ie master
      * @return The new PR object
      */
-    BitbucketPullRequest createPullRequest(BitbucketBranch fromRef, BitbucketBranch toBranch) {
+    static BitbucketPullRequest createPullRequest(BitbucketBranch fromRef, BitbucketBranch toBranch) {
         return BitbucketPullRequest.createPullRequest(fromRef, toBranch)
     }
 
-    BitbucketPullRequest createPullRequest(String title, String description, BitbucketBranch fromRef, BitbucketBranch toBranch) {
+    static BitbucketPullRequest createPullRequest(String title, String description, BitbucketBranch fromRef, BitbucketBranch toBranch) {
 
         return BitbucketPullRequest.createPullRequest(title, description, fromRef.id, toBranch.id, toBranch.repo)
     }
@@ -664,7 +656,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
         return BitbucketWebhook.createWebhook(name, remoteUrl, this, events, secret, newUnirest)
     }
 
-    boolean deleteWebhook(BitbucketWebhook webhook) {
+    static boolean deleteWebhook(BitbucketWebhook webhook) {
         return BitbucketWebhook.deleteWebhook(webhook)
     }
 
