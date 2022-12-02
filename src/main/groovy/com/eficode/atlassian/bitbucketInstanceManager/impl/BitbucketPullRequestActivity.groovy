@@ -1,11 +1,11 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
 
-class BitbucketPullRequestActivity implements BitbucketJsonEntity{
+class BitbucketPullRequestActivity implements BitbucketEntity{
 
     Integer id
     Long createdDate
@@ -22,7 +22,7 @@ class BitbucketPullRequestActivity implements BitbucketJsonEntity{
     }
 
     @Override
-    void setParent(Object pr) {
+    void setParent(BitbucketEntity pr) {
 
         assert pr instanceof BitbucketPullRequest
         this.pullRequest = pr as BitbucketPullRequest

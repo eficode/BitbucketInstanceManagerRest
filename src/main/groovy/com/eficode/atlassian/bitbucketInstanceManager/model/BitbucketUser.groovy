@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory
 
 import java.nio.charset.StandardCharsets
 
-class BitbucketUser implements BitbucketJsonEntity{
+class BitbucketUser implements BitbucketEntity{
 
     String name
     String emailAddress
@@ -22,13 +22,13 @@ class BitbucketUser implements BitbucketJsonEntity{
     static Logger log = LoggerFactory.getLogger(BitbucketUser.class)
 
     @Override
-    BitbucketInstanceManagerRest getParent() {
+    BitbucketEntity getParent() {
 
         return this.instance
     }
 
     @Override
-    void setParent(Object instance) {
+    void setParent(BitbucketEntity instance) {
 
         assert instance instanceof BitbucketInstanceManagerRest
         this.setInstance(instance as BitbucketInstanceManagerRest)
@@ -49,6 +49,10 @@ class BitbucketUser implements BitbucketJsonEntity{
 
     String toString() {
         return name + " (${id})"
+    }
+
+    String toAtlassianWikiMarkup() {
+        return "[~${name}] (Remote user: [${name}|${getProfileUrl(instance.baseUrl)}])"
     }
 
 

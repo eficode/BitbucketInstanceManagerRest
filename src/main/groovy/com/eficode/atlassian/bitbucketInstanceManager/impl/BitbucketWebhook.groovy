@@ -1,7 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory
 import org.slf4j.Logger
 import unirest.shaded.com.google.gson.JsonObject
 
-class BitbucketWebhook implements BitbucketJsonEntity {
+class BitbucketWebhook implements BitbucketEntity {
 
 
     int id
@@ -37,7 +37,7 @@ class BitbucketWebhook implements BitbucketJsonEntity {
     }
 
     @Override
-    void setParent(Object repo) {
+    void setParent(BitbucketEntity repo) {
 
         assert repo instanceof BitbucketRepo
         this.repo = repo as BitbucketRepo

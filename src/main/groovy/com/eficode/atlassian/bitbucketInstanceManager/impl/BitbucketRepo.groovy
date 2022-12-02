@@ -1,7 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import kong.unirest.HttpResponse
@@ -14,7 +14,7 @@ import unirest.shaded.com.google.gson.annotations.SerializedName
 
 import java.nio.charset.StandardCharsets
 
-class BitbucketRepo implements BitbucketJsonEntity {
+class BitbucketRepo implements BitbucketEntity {
 
 
     public String slug
@@ -33,6 +33,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
     public boolean archived
     public Map<String, ArrayList> links = ["clone": [[:]], "self": [[:]]]
 
+    BitbucketInstanceManagerRest instanceLocalCache
 
     @Override
     boolean isValid() {
@@ -42,6 +43,8 @@ class BitbucketRepo implements BitbucketJsonEntity {
 
     }
 
+
+
     @Override
     BitbucketProject getParent() {
 
@@ -49,7 +52,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
     }
 
     @Override
-    void setParent(Object proj) {
+    void setParent(BitbucketEntity proj) {
 
         assert proj instanceof BitbucketProject
         this.project = proj as BitbucketProject

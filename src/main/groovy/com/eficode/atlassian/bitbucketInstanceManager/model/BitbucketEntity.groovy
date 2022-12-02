@@ -12,7 +12,7 @@ import org.slf4j.Logger
 import java.lang.reflect.Field
 import java.lang.reflect.Type
 
-trait BitbucketJsonEntity {
+trait BitbucketEntity {
 
 
     //log.info("\n" + hooks.first().events.collect {"@SerializedName(\"$it\")\n${it.toString().toUpperCase().replace(":","_")}"}.sort().join(",\n") )
@@ -20,7 +20,7 @@ trait BitbucketJsonEntity {
 
     static abstract Logger log
     BitbucketInstanceManagerRest instance
-    abstract Object parent
+    abstract BitbucketEntity parent
     static Gson objectMapper = new Gson()
 
 
@@ -105,10 +105,10 @@ trait BitbucketJsonEntity {
 
     }
 
-    static ArrayList<BitbucketJsonEntity> fromJson(String rawJson, Class clazz, BitbucketInstanceManagerRest instance, Object parent) {
+    static ArrayList<BitbucketEntity> fromJson(String rawJson, Class clazz, BitbucketInstanceManagerRest instance, Object parent) {
 
         Type type
-        ArrayList<BitbucketJsonEntity> result
+        ArrayList<BitbucketEntity> result
 
 
         if (rawJson.startsWith("[")) {
@@ -126,7 +126,13 @@ trait BitbucketJsonEntity {
         result.each {
             it.setParent(parent)
             it.setInstance(instance)
+
+            //ArrayList<Field> fields = clazz.fields
+
+
         }
+
+
 
 
         return result

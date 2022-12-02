@@ -1,10 +1,11 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
+import com.google.gson.annotations.SerializedName
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-class BitbucketBranch implements BitbucketJsonEntity{
+class BitbucketBranch implements BitbucketEntity{
 
     static Logger log = LoggerFactory.getLogger(BitbucketRepo)
 
@@ -14,6 +15,8 @@ class BitbucketBranch implements BitbucketJsonEntity{
     String latestCommit
     String latestChangeset
     boolean isDefault
+
+    @SerializedName(value = "repository", alternate = ["repo"])
     BitbucketRepo repo
 
     boolean isValid() {
@@ -28,7 +31,7 @@ class BitbucketBranch implements BitbucketJsonEntity{
     }
 
     @Override
-    void setParent(Object repo) {
+    void setParent(BitbucketEntity repo) {
 
         assert repo instanceof BitbucketRepo
         this.repo = repo as BitbucketRepo

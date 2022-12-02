@@ -1,7 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketPrParticipant
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
@@ -12,7 +12,10 @@ import kong.unirest.json.JSONObject
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-class BitbucketPullRequest implements BitbucketJsonEntity {
+import java.text.DateFormat
+import java.text.SimpleDateFormat
+
+class BitbucketPullRequest implements BitbucketEntity {
 
     BitbucketRepo repo
     Logger log = LoggerFactory.getLogger(this.class)
@@ -42,7 +45,7 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
     }
 
     @Override
-    void setParent(Object repo) {
+    void setParent(BitbucketEntity repo) {
 
         assert repo instanceof BitbucketRepo
         this.repo = repo as BitbucketRepo
@@ -242,9 +245,28 @@ class BitbucketPullRequest implements BitbucketJsonEntity {
 
     /** --- GET METADATA--- **/
 
+    static final DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
     String toString() {
         return repo.toString() + ": " + title + " (ID: ${this.id})"
+    }
+
+    String toAtlassianWikiMarkup() {
+
+        String mainOut = "h2. Pull Request: $title (ID: $id)\n\n" +
+                "*Description:* \n\n${description.lines().collect {"\t" + it}.join("\n")}\n\n" +
+                "*State:* $state\n" +
+                "*Created*:" + dateFormat.format(new Date(createdDate as long))  + "\n\n" +
+                "*Updated*:" + dateFormat.format(new Date(updatedDate as long)) + "\n\n" +
+                "*From Branch*:" + fromRef.displayId + "\t*To Branch:* " + toRef.displayId + "\n\n" +
+                "*Author:* " + author.toAtlassianWikiMarkup() + "\n\n" +
+                "*Reviewers:*\n" + reviewers.collect {"\t" + it.toAtlassianWikiMarkup()}.join("\n") + "\n\n" +
+                "*Participants:*\n" + participants.collect {"\t" + it.toAtlassianWikiMarkup()}.join("\n")
+
+
+
+        return mainOut
+
     }
 
 

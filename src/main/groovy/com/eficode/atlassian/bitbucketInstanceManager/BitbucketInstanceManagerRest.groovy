@@ -5,6 +5,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
@@ -45,7 +46,7 @@ import java.util.regex.Matcher
 import java.util.regex.Pattern
 
 
-class BitbucketInstanceManagerRest {
+class BitbucketInstanceManagerRest implements BitbucketEntity{
 
     static Logger log = LoggerFactory.getLogger(BitbucketInstanceManagerRest.class)
     String adminUsername
@@ -128,7 +129,7 @@ class BitbucketInstanceManagerRest {
 
     ArrayList<JsonNode> getJsonPages(String subPath, long maxPages, boolean returnValueOnly = true) {
 
-        return getJsonPages(newUnirest, subPath, maxPages, returnValueOnly)
+        return getJsonPages(newUnirest, subPath, maxPages, [:],returnValueOnly)
     }
 
     static ArrayList<Map> jsonPagesToGenerics(ArrayList jsonPages) {
@@ -142,54 +143,23 @@ class BitbucketInstanceManagerRest {
     }
 
 
-    static ArrayList<JsonNode> getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, boolean returnValueOnly = true) {
 
 
-        int start = 0
-        boolean isLastPage = false
-
-        ArrayList responses = []
-
-        while (!isLastPage && start >= 0) {
-
-
-            HttpResponse<JsonNode> response = unirest.get(subPath).accept("application/json").queryString("start", start).asJson()
-
-
-            isLastPage = response?.body?.object?.has("isLastPage") ? response?.body?.object?.get("isLastPage") as boolean : true
-            start = response?.body?.object?.has("nextPageStart") && response.body.object["nextPageStart"] != null ? response.body.object["nextPageStart"] as int : -1
-
-            if (returnValueOnly) {
-                if (response.body.object.has("values")) {
-
-                    responses += response.body.object.get("values") as ArrayList<Map>
-                } else {
-
-                    throw new InputMismatchException("Unexpected body returned from $subPath, expected JSON with \"values\"-node but got: " + response.body.toString())
-                }
-
-            } else {
-                responses += response.body
-            }
-
-            if (maxResponses != 0) {
-                if (responses.size() > maxResponses) {
-                    log.warn("Returned more than expected responses (${responses.size()}) when querying:" + subPath)
-                    responses = responses[0..maxResponses - 1]
-                    break
-                } else if (responses.size() == maxResponses) {
-                    break
-                }
-            }
-
-
-        }
-
-        unirest.shutDown()
-        return responses
-
-
+    @Override
+    boolean isValid(){
+        return baseUrl && adminPassword && adminUsername
     }
+    @Override
+    BitbucketEntity getParent() {
+        return null
+    }
+
+    @Override
+    void setParent(BitbucketEntity parent) {
+        throw new InputMismatchException(BitbucketInstanceManagerRest.simpleName + " has no parent")
+    }
+
+
 
 
     /** --- Instance Methods --- **/

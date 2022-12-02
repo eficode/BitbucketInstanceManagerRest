@@ -4,7 +4,7 @@ import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRe
 import com.google.gson.annotations.SerializedName
 
 
-class BitbucketPrParticipant implements BitbucketJsonEntity{
+class BitbucketPrParticipant implements BitbucketEntity{
 
     BitbucketUser user
 
@@ -17,12 +17,15 @@ class BitbucketPrParticipant implements BitbucketJsonEntity{
     String status //UNAPPROVED, NEEDS_WORK, APPROVED
 
     @Override
-    Object getParent() {
-        return validJsonEntity && role in ["AUTHOR", "REVIEWER", "PARTICIPANT"] && status in ["UNAPPROVED", "NEEDS_WORK", "APPROVED"] && user != null
+    BitbucketEntity getParent() {
+        return this.instance
     }
 
+    String toAtlassianWikiMarkup() {
+        return user.toAtlassianWikiMarkup() + " " + role.capitalize() + " " + status.capitalize()
+    }
     @Override
-    void setParent(Object parent) {
+    void setParent(BitbucketEntity parent) {
         assert parent instanceof BitbucketInstanceManagerRest
         this.setInstance(parent as BitbucketInstanceManagerRest)
         assert this.instance instanceof BitbucketInstanceManagerRest
@@ -30,6 +33,6 @@ class BitbucketPrParticipant implements BitbucketJsonEntity{
 
     @Override
     boolean isValid() {
-        return this.instance
+        return validJsonEntity && role in ["AUTHOR", "REVIEWER", "PARTICIPANT"] && status in ["UNAPPROVED", "NEEDS_WORK", "APPROVED"] && user != null
     }
 }

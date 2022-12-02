@@ -1,10 +1,10 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-class BitbucketChange implements BitbucketJsonEntity{
+class BitbucketChange implements BitbucketEntity{
 
     String contentId
     String fromContentId
@@ -33,7 +33,7 @@ class BitbucketChange implements BitbucketJsonEntity{
     }
 
     @Override
-    void setParent(Object commit) {
+    void setParent(BitbucketEntity commit) {
 
         assert commit instanceof BitbucketCommit
         this.commit = commit as BitbucketCommit
