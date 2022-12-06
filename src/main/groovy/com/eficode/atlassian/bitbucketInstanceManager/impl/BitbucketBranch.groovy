@@ -26,19 +26,8 @@ class BitbucketBranch implements BitbucketEntity{
         return isValidJsonEntity() && id && latestCommit && latestChangeset && repo && (type == "BRANCH")
     }
 
-    @Override
-    BitbucketRepo getParent() {
-
-        return this.repo
-    }
-
-    @Override
-    void setParent(BitbucketEntity repo) {
-
-        assert repo instanceof BitbucketRepo
-        this.repo = repo as BitbucketRepo
-
-        assert this.repo instanceof BitbucketRepo
+    String toString() {
+        return displayId
     }
 
     /**
@@ -86,7 +75,7 @@ class BitbucketBranch implements BitbucketEntity{
 
         ArrayList<String> rawResponse = getJsonPages(repo.newUnirest,url,maxMatches,[filterText: filter])
 
-        ArrayList<BitbucketBranch> branches = fromJson(rawResponse.toString(),BitbucketBranch,repo.instance,repo)
+        ArrayList<BitbucketBranch> branches = fromJson(rawResponse.toString(),BitbucketBranch,repo.instance)
         return branches
 
 

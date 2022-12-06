@@ -36,19 +36,6 @@ class BitbucketWebhook implements BitbucketEntity {
 
      */
 
-    @Override
-    BitbucketRepo getParent() {
-        return this.repo
-    }
-
-    @Override
-    void setParent(BitbucketEntity repo) {
-
-        assert repo instanceof BitbucketRepo
-        this.repo = repo as BitbucketRepo
-
-        assert this.repo instanceof BitbucketRepo
-    }
 
     @Override
     boolean isValid() {
@@ -91,7 +78,7 @@ class BitbucketWebhook implements BitbucketEntity {
 
         ArrayList<JsonObject> rawResponse = getJsonPages(unirest, url, maxReturns, [event: getEventNames(events)], true)
 
-        ArrayList<BitbucketWebhook> hooks = fromJson(rawResponse.toString(), BitbucketWebhook, repo.instance, repo)
+        ArrayList<BitbucketWebhook> hooks = fromJson(rawResponse.toString(), BitbucketWebhook, repo.instance)
 
         hooks.every { it.isValid() }
 
@@ -128,7 +115,7 @@ class BitbucketWebhook implements BitbucketEntity {
         assert responseRaw.status == 201: "Error creating Webhook, API returned stauts ${responseRaw.status}, and body:" + responseRaw?.body
 
 
-        ArrayList<BitbucketWebhook> hooks = fromJson(responseRaw.body.toString(), BitbucketWebhook, repo.instance, repo)
+        ArrayList<BitbucketWebhook> hooks = fromJson(responseRaw.body.toString(), BitbucketWebhook, repo.instance)
 
 
         assert hooks.size() == 1: "Library failed to parse response from API:" + responseRaw.body.toPrettyString()

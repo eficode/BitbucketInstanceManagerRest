@@ -19,20 +19,15 @@ class BitbucketPrParticipant implements BitbucketEntity{
     boolean approved
     String status //UNAPPROVED, NEEDS_WORK, APPROVED
 
-    @Override
-    BitbucketEntity getParent() {
-        return this.instance
+
+    String toString() {
+        return user.toString() + " (${role})"
     }
 
     String toAtlassianWikiMarkup() {
         return user.toAtlassianWikiMarkup() + " " + role.capitalize() + " " + status.capitalize()
     }
-    @Override
-    void setParent(BitbucketEntity parent) {
-        assert parent instanceof BitbucketInstanceManagerRest
-        this.setInstance(parent as BitbucketInstanceManagerRest)
-        assert this.instance instanceof BitbucketInstanceManagerRest
-    }
+
 
     @Override
     boolean isValid() {

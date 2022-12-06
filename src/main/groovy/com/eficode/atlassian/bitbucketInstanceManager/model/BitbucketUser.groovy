@@ -26,20 +26,6 @@ class BitbucketUser implements BitbucketEntity{
     LinkedHashMap links
     static Logger log = LoggerFactory.getLogger(BitbucketUser.class)
 
-    @Override
-    BitbucketEntity getParent() {
-
-        return this.instance
-    }
-
-    @Override
-    void setParent(BitbucketEntity instance) {
-
-        assert instance instanceof BitbucketInstanceManagerRest
-        this.setInstance(instance as BitbucketInstanceManagerRest)
-        assert this.instance instanceof BitbucketInstanceManagerRest
-        assert this.getInstance() instanceof BitbucketInstanceManagerRest
-    }
 
     String getProfileUrl(String baseUrl) {
 

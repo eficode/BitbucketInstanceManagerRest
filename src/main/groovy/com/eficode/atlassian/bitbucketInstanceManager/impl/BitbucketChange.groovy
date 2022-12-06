@@ -22,23 +22,12 @@ class BitbucketChange implements BitbucketEntity{
 
     boolean isValid() {
 
-        return isValidJsonEntity() && contentId &&  commit.isValid() && parent instanceof BitbucketCommit
+        return isValidJsonEntity() && contentId &&  commit.isValid()
 
     }
 
-    @Override
-    BitbucketCommit getParent() {
 
-        return this.commit
-    }
 
-    @Override
-    void setParent(BitbucketEntity commit) {
-
-        assert commit instanceof BitbucketCommit
-        this.commit = commit as BitbucketCommit
-
-    }
 
     String getActionSymbol() {
 

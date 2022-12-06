@@ -16,21 +16,6 @@ class BitbucketPullRequestActivity implements BitbucketEntity{
 
 
     @Override
-    BitbucketPullRequest getParent() {
-
-        return this.pullRequest
-    }
-
-    @Override
-    void setParent(BitbucketEntity pr) {
-
-        assert pr instanceof BitbucketPullRequest
-        this.pullRequest = pr as BitbucketPullRequest
-
-        assert this.pullRequest instanceof BitbucketPullRequest
-    }
-
-    @Override
     boolean isValid() {
         return validJsonEntity && id && pullRequest && user && (commit == null || commit.isValid())
     }
@@ -40,7 +25,7 @@ class BitbucketPullRequestActivity implements BitbucketEntity{
 
         ArrayList<JsonNode> rawActs = getPrActivities(pr.newUnirest, pr.repo.projectKey, pr.repo.slug, pr.id, maxActivities)
 
-        ArrayList<BitbucketPullRequestActivity> activities = fromJson(rawActs.toString(),BitbucketPullRequestActivity,pr.instance, pr)
+        ArrayList<BitbucketPullRequestActivity> activities = fromJson(rawActs.toString(),BitbucketPullRequestActivity,pr.instance)
 
         //Re-fetch the commits to get rich data
         activities.findAll {it.commit != null}.each { it.commit = pr.repo.getCommit(it.commit.id)}

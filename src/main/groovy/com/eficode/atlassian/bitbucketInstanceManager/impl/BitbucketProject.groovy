@@ -39,7 +39,7 @@ public class BitbucketProject implements BitbucketEntity {
 
     boolean isValid() {
 
-        return isValidJsonEntity() && key && id && name && type && parent instanceof BitbucketInstanceManagerRest
+        return isValidJsonEntity() && key && id && name && type
 
     }
 
@@ -48,21 +48,12 @@ public class BitbucketProject implements BitbucketEntity {
         return name + "(Key: ${key}, ID:$id)"
     }
 
-    @Override
+
     BitbucketProject refreshInfo() {
         return getProject(getInstance(), key)
     }
 
-    @Override
-    void setParent(BitbucketEntity instance ) {
-        assert instance instanceof  BitbucketInstanceManagerRest
-        this.instance = instance
-        this.localParent = instance
-    }
 
-    BitbucketInstanceManagerRest getParent() {
-        return this.instance
-    }
 
     /** --- CREATE --- **/
 
@@ -132,7 +123,7 @@ public class BitbucketProject implements BitbucketEntity {
     static ArrayList<BitbucketProject> getProjects(BitbucketInstanceManagerRest bbInstance, long maxProjects = 25) {
 
         ArrayList<String> rawProjects = getProjects(bbInstance.newUnirest, maxProjects)
-        ArrayList<BitbucketProject> projects = fromJson(rawProjects.toString(), BitbucketProject, bbInstance, bbInstance)
+        ArrayList<BitbucketProject> projects = fromJson(rawProjects.toString(), BitbucketProject, bbInstance)
         assert projects.every { it.isValid() }: "Library returned invalid projects"
         return projects
 
@@ -161,7 +152,7 @@ public class BitbucketProject implements BitbucketEntity {
 
         assert rawProject.size() == 1: "Error getting project with key:" + projectKey
 
-        return fromJson(rawProject.first().toString(), BitbucketProject, bbInstance, bbInstance).find { it.valid } as BitbucketProject
+        return fromJson(rawProject.first().toString(), BitbucketProject, bbInstance).find { it.valid } as BitbucketProject
     }
 
 

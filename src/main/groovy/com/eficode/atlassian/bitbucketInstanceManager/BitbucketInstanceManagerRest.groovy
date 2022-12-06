@@ -133,15 +133,6 @@ class BitbucketInstanceManagerRest implements BitbucketEntity{
     boolean isValid(){
         return baseUrl && adminPassword && adminUsername
     }
-    @Override
-    BitbucketEntity getParent() {
-        return this
-    }
-
-    @Override
-    void setParent(BitbucketEntity parent) {
-        throw new InputMismatchException(BitbucketInstanceManagerRest.simpleName + " has no parent")
-    }
 
 
 

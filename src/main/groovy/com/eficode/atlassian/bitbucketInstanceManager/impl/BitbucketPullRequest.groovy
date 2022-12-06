@@ -35,30 +35,19 @@ class BitbucketPullRequest implements BitbucketEntity {
     BitbucketPrParticipant author
     ArrayList<BitbucketPrParticipant> reviewers
     ArrayList<BitbucketPrParticipant> participants
+
+
+
     Map links
     Map properties
 
 
-    @Override
-    BitbucketRepo getParent() {
-
-        return this.repo
-    }
-
-    @Override
-    void setParent(BitbucketEntity repo) {
-
-        assert repo instanceof BitbucketRepo
-        this.repo = repo as BitbucketRepo
-
-        assert this.repo instanceof BitbucketRepo
-    }
 
     @Override
     boolean isValid() {
 
 
-        return isValidJsonEntity() && repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author.isValid() && instance instanceof BitbucketInstanceManagerRest
+        return isValidJsonEntity() && repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author.isValid()
 
     }
 
@@ -94,7 +83,7 @@ class BitbucketPullRequest implements BitbucketEntity {
 
         String prJson = createPullRequest(title, description, fromRef, toBranch, repo.projectKey, repo.repositorySlug, repo.newUnirest)
 
-        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance)
 
         assert prs.size() == 1: "Library failed to parse response from API:" + prJson
         assert prs.first().isValid(): " Library returned invalid object"
@@ -137,7 +126,7 @@ class BitbucketPullRequest implements BitbucketEntity {
 
         ArrayList<String> rawPr = getJsonPages(repo.newUnirest, "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.repositorySlug}/pull-requests/$id", 1, [:], false)
 
-        ArrayList<BitbucketPullRequest> prs = fromJson(rawPr.first().toString(), BitbucketPullRequest, repo.instance, repo)
+        ArrayList<BitbucketPullRequest> prs = fromJson(rawPr.first().toString(), BitbucketPullRequest, repo.instance)
 
         if (prs.size() == 1) {
             return prs.first()
@@ -159,7 +148,8 @@ class BitbucketPullRequest implements BitbucketEntity {
 
         String prJson = getPullRequests(repo.projectKey, repo.repositorySlug, repo.newUnirest, state, targetBranch?.id)
 
-        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance)
+        prs.each {it.repo = repo}
 
         if (prs.empty) {
             return []
@@ -211,7 +201,7 @@ class BitbucketPullRequest implements BitbucketEntity {
 
         String prJson = getPullRequestsInvolvingCommit(repo.projectKey, repo.repositorySlug, commitId, repo.newUnirest, maxPrs)
 
-        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance)
 
         if (prs.empty) {
             return []
@@ -249,7 +239,7 @@ class BitbucketPullRequest implements BitbucketEntity {
     static final DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
     String toString() {
-        return repo.toString() + ": " + title + " (ID: ${this.id})"
+        return  title + " (ID: ${this.id})"
     }
 
     String toAtlassianWikiMarkup() {
@@ -328,7 +318,7 @@ class BitbucketPullRequest implements BitbucketEntity {
 
         String prJson = mergePullRequest(repo.projectKey, repo.slug, prId, prVersion, repo.newUnirest, mergeStrategy ? mergeStrategy.getSerializedName() : "")
 
-        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance, repo)
+        ArrayList<BitbucketPullRequest> prs = fromJson(prJson, BitbucketPullRequest, repo.instance)
 
         assert prs.size() == 1: "Library failed to parse response from API:" + prJson
         assert prs.first().isValid(): " Library returned invalid object"
@@ -396,7 +386,7 @@ class BitbucketPullRequest implements BitbucketEntity {
 
         String rawResponse = setApprovalStatus(bb.newUnirest, repo.projectKey, repo.slug, id, currentUser.slug,status)
 
-        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawResponse,BitbucketPrParticipant, instance, instance).first() as BitbucketPrParticipant
+        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawResponse,BitbucketPrParticipant, instance).first() as BitbucketPrParticipant
 
         //Re-fetching so that the correct user is logged-in in the new object
         ArrayList<BitbucketPrParticipant> reviewers = this.refreshInfo().getReviewers()
@@ -420,7 +410,7 @@ class BitbucketPullRequest implements BitbucketEntity {
 
         String rawResponse = setApprovalStatus(newUnirest, repo.projectKey, repo.slug, id, userSlug,status)
 
-        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawResponse,BitbucketPrParticipant, instance, instance).first() as BitbucketPrParticipant
+        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawResponse,BitbucketPrParticipant, instance).first() as BitbucketPrParticipant
 
         return participant
 
@@ -516,7 +506,7 @@ class BitbucketPullRequest implements BitbucketEntity {
     BitbucketPrParticipant addReviewer(BitbucketUser user){
 
         String rawJsonResponse = addReviewer(instance.newUnirest, repo.projectKey, repo.slug, id, user.name)
-        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawJsonResponse,BitbucketPrParticipant, user.instance, user.instance).first() as BitbucketPrParticipant
+        BitbucketPrParticipant participant = BitbucketPrParticipant.fromJson(rawJsonResponse,BitbucketPrParticipant, user.instance).first() as BitbucketPrParticipant
         return  participant
 
     }

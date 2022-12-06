@@ -45,19 +45,6 @@ class BitbucketCommit implements BitbucketEntity {
 
     }
 
-    @Override
-    BitbucketRepo getParent() {
-        return this.repository
-    }
-
-    @Override
-    void setParent(BitbucketEntity repo) {
-
-        assert repo instanceof BitbucketRepo
-        this.repository = repo as BitbucketRepo
-
-        assert this.repository instanceof BitbucketRepo
-    }
 
     String getProjectKey() {
         return repository.projectKey
@@ -70,7 +57,7 @@ class BitbucketCommit implements BitbucketEntity {
     @Override
     boolean isValid() {
 
-        return isValidJsonEntity() && id && displayId && message && parent instanceof BitbucketRepo && repository.isValid() && author instanceof BitbucketUser
+        return isValidJsonEntity() && id && displayId && message && repository.isValid() && author instanceof BitbucketUser
 
     }
 
@@ -189,13 +176,13 @@ class BitbucketCommit implements BitbucketEntity {
 
 
         ArrayList<JsonNode> rawChangesResp = getRawChanges(newUnirest, projectKey, repoSlug, commitId, maxChanges)
-        ArrayList<BitbucketChange> result = BitbucketChange.fromJson(rawChangesResp.toString(), BitbucketChange, instance, this) as ArrayList<BitbucketChange>
+        ArrayList<BitbucketChange> result = BitbucketChange.fromJson(rawChangesResp.toString(), BitbucketChange, instance) as ArrayList<BitbucketChange>
 
 
         if (result.isEmpty() && this.isAMerge()) {
             log.info("\tCommit has no changes but have been confirmed to be a Merge-commit, fetching changes performed by merge")
             ArrayList<JsonNode> rawChangesParent = getRawChanges(newUnirest, projectKey, repoSlug, commitId, maxChanges, parents.first().id as String)
-            result = BitbucketChange.fromJson(rawChangesParent.toString(), BitbucketChange, instance, this) as ArrayList<BitbucketChange>
+            result = BitbucketChange.fromJson(rawChangesParent.toString(), BitbucketChange, instance) as ArrayList<BitbucketChange>
         }
 
         result.each { it.commit = this }
@@ -299,7 +286,7 @@ class BitbucketCommit implements BitbucketEntity {
         assert rawCommits.size() == 1: "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
 
 
-        BitbucketCommit commit = fromJson(rawCommits.toString(), BitbucketCommit, repo.instance, repo).first() as BitbucketCommit
+        BitbucketCommit commit = fromJson(rawCommits.toString(), BitbucketCommit, repo.instance).first() as BitbucketCommit
         return commit
 
     }
