@@ -479,12 +479,13 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         then: "The PR should have no more Reviewers"
         pr.reviewers.isEmpty()
 
-        when:
+        when: "Approve as a user yet to be added as reviewer"
         participant = pr.setApprovalStatus(otherUserName, otherUserName.reverse(), "APPROVED")
         pr = pr.refreshInfo()
 
-        then:
+        then: "Assert user was added as reviewer and that the PR is approved"
         participant.user.name == otherUserName
+        participant.role == "REVIEWER"
         pr.getApprovers().user.id == [otherUser.id]
         pr.getApprovers().status == ["APPROVED"]
 

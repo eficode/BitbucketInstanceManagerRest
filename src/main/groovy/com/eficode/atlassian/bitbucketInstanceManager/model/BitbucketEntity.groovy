@@ -1,6 +1,8 @@
 package com.eficode.atlassian.bitbucketInstanceManager.model
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 
@@ -10,7 +12,10 @@ import com.google.gson.reflect.TypeToken
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
+import org.codehaus.groovy.ast.ClassNode
+import org.codehaus.groovy.transform.trait.Traits
 import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
 import java.lang.reflect.Field
 import java.lang.reflect.Type
@@ -22,10 +27,94 @@ trait BitbucketEntity {
 
 
     static abstract Logger log
-    BitbucketInstanceManagerRest instance
-    abstract BitbucketEntity parent
+    static Logger entityLog = LoggerFactory.getLogger(BitbucketEntity.class)
+    private BitbucketInstanceManagerRest localInstance
+    BitbucketEntity localParent
+
     static ObjectMapper objectMapper = new ObjectMapper()
 
+    BitbucketInstanceManagerRest getInstance() {
+        return this.localInstance
+    }
+
+    void setInstance(BitbucketInstanceManagerRest instance) {
+
+        entityLog.info("For object: " +  this.toString()  + " (${getClass().simpleName})")
+        entityLog.info("\tSetting instance to: " + instance.toString())
+        this.localInstance = instance
+
+        ArrayList<Field> entityFields = getClass().declaredFields.findAll {it.type != BitbucketInstanceManagerRest && Traits.findTraits(new ClassNode(it.type)).size() == 1}
+
+        entityFields.removeAll{it.name.startsWith("com_")}
+
+        if (entityFields) {
+            entityLog.debug("\tObject has fields that are BitbucketEntity's, setting instance for them as well")
+
+            entityFields.each {field ->
+
+                boolean accessible = field.canAccess(this)
+
+                accessible ? null : field.setAccessible(true)
+
+                field.get(this).invokeMethod("setInstance", instance)
+
+                accessible ? null : field.setAccessible(false)
+            }
+        }
+
+
+    }
+
+
+    //abstract BitbucketEntity refreshInfo()
+    BitbucketEntity refreshInfo(){}
+
+    BitbucketEntity getParent() {
+
+        if(this.localParent != null && this.localParent.isValid()) {
+            return this.localParent
+        }else {
+            entityLog.info("Local parent:" + this.localParent.toString())
+            this.localParent = this.localParent.refreshInfo()
+            assert this.localParent.isValid()
+            return this.localParent
+        }
+
+    }
+
+    void setParent(BitbucketEntity parent) {
+        this.localParent = parent
+    }
+    /*
+    void setParent(BitbucketEntity parent) {
+
+        entityLog.info("For object: " +  this.toString()  + " (${getClass().simpleName})")
+        entityLog.info("\tSetting parent to to: " + parent.toString() +  " (${parent.getClass().simpleName})")
+        this.localParent = parent
+
+        ArrayList<Field> entityFields = getClass().declaredFields.findAll {it.type != BitbucketInstanceManagerRest && Traits.findTraits(new ClassNode(it.type)).size() == 1}
+
+        entityFields.removeAll{it.name.startsWith("com_")}
+
+        if (entityFields) {
+            entityLog.debug("\tObject has fields that are BitbucketEntity's, setting their parents to:" + this.toString() + " (${this.getClass().simpleName})")
+
+            entityFields.each {field ->
+
+                boolean accessible = field.canAccess(this)
+
+                accessible ? null : field.setAccessible(true)
+
+                field.get(this).invokeMethod("setParent", this)
+
+                accessible ? null : field.setAccessible(false)
+            }
+        }
+
+
+    }
+
+     */
 
     static String createUrlParameterString(Map<String, Object> urlParameters) {
 
@@ -111,6 +200,11 @@ trait BitbucketEntity {
     static ArrayList<BitbucketEntity> fromJson(String rawJson, Class clazz, BitbucketInstanceManagerRest instance, Object parent) {
 
 
+        entityLog.info("Creating ${clazz.simpleName} from json")
+        entityLog.debug("\tWith parent:" + parent.toString())
+        entityLog.debug("\tWith instance:" + instance.baseUrl)
+        entityLog.trace("\tWith JSON:" + rawJson)
+
         ArrayList<BitbucketEntity> result
 
 
@@ -126,14 +220,80 @@ trait BitbucketEntity {
             throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
         }
 
+        entityLog.debug("\tCreated ${result.size()} " + clazz.simpleName + " object" + (result.size() > 1 ? "s" : ""))
         result.each {
             it.setParent(parent as BitbucketEntity)
             it.setInstance(instance)
 
-
-
         }
 
+
+        entityLog.info("Is valid json:" +  result.first().validJsonEntity.toString())
+
+        if (false && clazz == BitbucketPullRequest) {
+            BitbucketPullRequest pr = result.first()
+            ArrayList<Field> fields = clazz.getFields().findAll{ Traits.findTraits(new ClassNode(it.type)).size() == 1}
+            ArrayList<Field> dfields = clazz.declaredFields.findAll{ Traits.findTraits(new ClassNode(it.type)).size() == 1}
+
+
+            println("Declared fields:")
+            dfields.each {field ->
+                boolean accessible = field.canAccess(pr)
+
+                accessible ? null : field.setAccessible(true)
+
+                println("Field name: " + field.name)
+                field.setAccessible(true)
+                println("\tField value: " + field.get(pr) )
+
+                if (! field.get(pr)?.invokeMethod("getParent", null)) {
+                    println("\t\tValue has NO parent")
+                }else {
+                    println("\t\tValue has YES parent: Field" + field.get(pr).invokeMethod("getParent", null))
+                }
+
+
+                accessible ? null : field.setAccessible(false)
+
+
+
+
+            }
+
+            println("Pr Instance:" + pr.instance)
+            println("Participant Instance:" + pr.participants.instance)
+
+            true
+        }
+
+        if (clazz == BitbucketRepo && false) {
+            BitbucketRepo repo = result.first()
+            ArrayList<Field> decFields = clazz.declaredFields
+            ArrayList<Field> allFields = clazz.fields
+            ArrayList<Field> fields = clazz.getFields().findAll{ Traits.findTraits(new ClassNode(it.type)).size() == 1}
+            ArrayList<Field> dfields = clazz.declaredFields.findAll{ Traits.findTraits(new ClassNode(it.type)).size() == 1}
+
+
+
+            fields.each {field ->
+                println(field.name + "\n\t" + field.get(result.first()) )
+
+            }
+            printf("Declared fields:")
+            dfields.each {field ->
+                println(field.name)
+                field.setAccessible(true)
+
+                println("\t" + field.get(repo) )
+
+            }
+
+            println(repo.instance.baseUrl)
+            println(repo.project)
+
+
+            true
+        }
 
 
 
@@ -141,6 +301,8 @@ trait BitbucketEntity {
 
 
     }
+
+
 
     static ArrayList<Map> jsonPagesToGenerics(ArrayList jsonPages) {
 

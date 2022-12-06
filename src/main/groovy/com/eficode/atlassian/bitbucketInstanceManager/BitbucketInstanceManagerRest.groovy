@@ -123,6 +123,9 @@ class BitbucketInstanceManagerRest implements BitbucketEntity{
 
 
 
+    String toString() {
+        return adminUsername + "@" + baseUrl
+    }
 
 
 
@@ -132,7 +135,7 @@ class BitbucketInstanceManagerRest implements BitbucketEntity{
     }
     @Override
     BitbucketEntity getParent() {
-        return null
+        return this
     }
 
     @Override

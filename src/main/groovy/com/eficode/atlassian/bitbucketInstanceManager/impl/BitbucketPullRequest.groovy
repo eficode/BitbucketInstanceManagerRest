@@ -58,7 +58,7 @@ class BitbucketPullRequest implements BitbucketEntity {
     boolean isValid() {
 
 
-        return isValidJsonEntity() && repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author && instance instanceof BitbucketInstanceManagerRest
+        return isValidJsonEntity() && repo instanceof BitbucketRepo && id && title && fromRef instanceof BitbucketBranch && toRef instanceof BitbucketBranch && author.isValid() && instance instanceof BitbucketInstanceManagerRest
 
     }
 

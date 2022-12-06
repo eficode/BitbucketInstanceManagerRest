@@ -1,12 +1,15 @@
 package com.eficode.atlassian.bitbucketInstanceManager.model
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.fasterxml.jackson.annotation.JsonProperty
 
 
 class BitbucketPrParticipant implements BitbucketEntity{
 
     BitbucketUser user
+
+
 
 
     @JsonProperty("lastReviewedCommit")

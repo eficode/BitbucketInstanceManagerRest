@@ -28,6 +28,8 @@ class BitbucketRepo implements BitbucketEntity {
     public BitbucketProject project
     static Logger log = LoggerFactory.getLogger(BitbucketRepo)
 
+
+
     @JsonProperty("public")
     public boolean isPublic
     public boolean archived
@@ -38,27 +40,22 @@ class BitbucketRepo implements BitbucketEntity {
     @Override
     boolean isValid() {
 
-        return isValidJsonEntity() && slug && id && name && hierarchyId && project?.isValid() && instance instanceof BitbucketInstanceManagerRest
+        return isValidJsonEntity() && slug && id && name && hierarchyId && project.isValid() && instance instanceof BitbucketInstanceManagerRest
 
 
     }
 
+    /*
+    void setProject(BitbucketProject project) {
+        this.project = project
+    }
 
-
-    @Override
-    BitbucketProject getParent() {
-
+    BitbucketProject getProject() {
         return this.project
     }
 
-    @Override
-    void setParent(BitbucketEntity proj) {
+     */
 
-        assert proj instanceof BitbucketProject
-        this.project = proj as BitbucketProject
-
-        assert this.project instanceof BitbucketProject
-    }
 
 
     boolean equals(Object object) {

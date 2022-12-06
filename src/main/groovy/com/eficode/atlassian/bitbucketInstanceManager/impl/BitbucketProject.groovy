@@ -2,7 +2,10 @@ package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntityDeserializer
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketProjectDeserializer
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
@@ -11,7 +14,8 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
-class BitbucketProject implements BitbucketEntity {
+
+public class BitbucketProject implements BitbucketEntity {
 
 
     static Logger log = LoggerFactory.getLogger(this.class)
@@ -26,6 +30,8 @@ class BitbucketProject implements BitbucketEntity {
     boolean isPublic
 
 
+
+
     boolean equals(Object object) {
 
         return object instanceof BitbucketProject && this.key == object.key && this.id == object.id
@@ -37,26 +43,26 @@ class BitbucketProject implements BitbucketEntity {
 
     }
 
-    @Override
-    BitbucketEntity getParent() {
-
-        return this.instance
-    }
-
-    @Override
-    void setParent(BitbucketEntity instance) {
-
-        assert instance instanceof BitbucketInstanceManagerRest
-        this.setInstance(instance as BitbucketInstanceManagerRest)
-        assert this.instance instanceof BitbucketInstanceManagerRest
-        assert this.getInstance() instanceof BitbucketInstanceManagerRest
-    }
-
 
     String toString() {
         return name + "(Key: ${key}, ID:$id)"
     }
 
+    @Override
+    BitbucketProject refreshInfo() {
+        return getProject(getInstance(), key)
+    }
+
+    @Override
+    void setParent(BitbucketEntity instance ) {
+        assert instance instanceof  BitbucketInstanceManagerRest
+        this.instance = instance
+        this.localParent = instance
+    }
+
+    BitbucketInstanceManagerRest getParent() {
+        return this.instance
+    }
 
     /** --- CREATE --- **/
 
