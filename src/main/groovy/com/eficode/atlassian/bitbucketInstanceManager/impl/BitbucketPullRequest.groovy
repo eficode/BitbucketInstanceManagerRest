@@ -27,8 +27,9 @@ class BitbucketPullRequest implements BitbucketEntity {
     boolean open
     boolean closed
     boolean locked
-    Long createdDate
-    Long updatedDate
+    long createdDate
+    long updatedDate
+    long closedDate
     BitbucketBranch fromRef
     BitbucketBranch toRef
     BitbucketPrParticipant author

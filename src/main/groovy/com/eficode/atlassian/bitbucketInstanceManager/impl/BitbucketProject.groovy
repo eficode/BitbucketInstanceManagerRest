@@ -2,6 +2,7 @@ package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
+import com.fasterxml.jackson.annotation.JsonProperty
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
@@ -18,9 +19,10 @@ class BitbucketProject implements BitbucketEntity {
     String id
     String name
     String type
+    String description
     Map<String, ArrayList> links
 
-    @SerializedName("public")
+    @JsonProperty("public")
     boolean isPublic
 
 

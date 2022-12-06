@@ -18,6 +18,11 @@ class BitbucketUser implements BitbucketEntity{
     Integer id
     String slug
     String type
+    String directoryName
+    boolean deletable
+    boolean mutableDetails
+    boolean mutableGroups
+    long lastAuthenticationTimestamp
     LinkedHashMap links
     static Logger log = LoggerFactory.getLogger(BitbucketUser.class)
 

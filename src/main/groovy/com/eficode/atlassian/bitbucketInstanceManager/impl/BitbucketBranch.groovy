@@ -1,7 +1,8 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
-import com.google.gson.annotations.SerializedName
+import com.fasterxml.jackson.annotation.JsonAlias
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
@@ -16,7 +17,8 @@ class BitbucketBranch implements BitbucketEntity{
     String latestChangeset
     boolean isDefault
 
-    @SerializedName(value = "repository", alternate = ["repo"])
+    @JsonProperty("repo")
+    @JsonAlias("repository")
     BitbucketRepo repo
 
     boolean isValid() {

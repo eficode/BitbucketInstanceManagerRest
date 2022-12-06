@@ -25,11 +25,16 @@ class BitbucketWebhook implements BitbucketEntity {
     Logger log = LoggerFactory.getLogger(this.class)
 
 
+    /*
+    BitbucketWebhook(){}
+
     BitbucketWebhook(BitbucketRepo repo) {
 
         this.repo = repo
 
     }
+
+     */
 
     @Override
     BitbucketRepo getParent() {

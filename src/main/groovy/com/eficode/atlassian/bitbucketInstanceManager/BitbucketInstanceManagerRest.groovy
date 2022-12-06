@@ -1,25 +1,20 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
-import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketCommit
+
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject
-import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
-import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
-import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
-import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
-import com.google.gson.Gson
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.gson.reflect.TypeToken
 import kong.unirest.Cookie
 import kong.unirest.Cookies
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
-import kong.unirest.MultipartBody
 import kong.unirest.Unirest
 import kong.unirest.UnirestException
 import kong.unirest.UnirestInstance
-import kong.unirest.json.JSONArray
 import org.eclipse.jgit.api.CloneCommand
 import org.eclipse.jgit.api.CommitCommand
 import org.eclipse.jgit.api.Git
@@ -36,12 +31,7 @@ import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
-import unirest.shaded.com.google.gson.JsonObject
-import unirest.shaded.com.google.gson.annotations.SerializedName
 
-import java.nio.charset.StandardCharsets
-import java.text.DateFormat
-import java.text.SimpleDateFormat
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
@@ -51,9 +41,8 @@ class BitbucketInstanceManagerRest implements BitbucketEntity{
     static Logger log = LoggerFactory.getLogger(BitbucketInstanceManagerRest.class)
     String adminUsername
     String adminPassword
-    //JsonObjectMapper objectMapper
     String baseUrl
-    static Gson gson = new Gson()
+    static ObjectMapper objectMapper = new ObjectMapper()
 
     BitbucketInstanceManagerRest(String username, String password, String baseUrl) {
         this.baseUrl = baseUrl
@@ -132,15 +121,7 @@ class BitbucketInstanceManagerRest implements BitbucketEntity{
         return getJsonPages(newUnirest, subPath, maxPages, [:],returnValueOnly)
     }
 
-    static ArrayList<Map> jsonPagesToGenerics(ArrayList jsonPages) {
 
-        return gson.fromJson(jsonPages.toString(), TypeToken.getParameterized(ArrayList.class, Map).getType())
-    }
-
-    static Map jsonPagesToGenerics(JsonNode jsonNode) {
-
-        return gson.fromJson(jsonNode.toString(), TypeToken.get(Map).getType())
-    }
 
 
 

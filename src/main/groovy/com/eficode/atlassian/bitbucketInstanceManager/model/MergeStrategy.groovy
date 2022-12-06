@@ -1,24 +1,24 @@
 package com.eficode.atlassian.bitbucketInstanceManager.model
 
-import com.google.gson.annotations.SerializedName
+import com.fasterxml.jackson.annotation.JsonProperty
 
 import java.lang.reflect.Field
 
 enum MergeStrategy {
 
-    @SerializedName("no-ff")
+    @JsonProperty("no-ff")
     NO_FF,
-    @SerializedName("ff")
+    @JsonProperty("ff")
     FF,
-    @SerializedName("ff-only")
+    @JsonProperty("ff-only")
     FF_ONLY,
-    @SerializedName("rebase-no-ff")
+    @JsonProperty("rebase-no-ff")
     REBASE_NO_FF,
-    @SerializedName("rebase-ff-only")
+    @JsonProperty("rebase-ff-only")
     REBASE_FF_ONLY,
-    @SerializedName("squash")
+    @JsonProperty("squash")
     SQUASH,
-    @SerializedName("squash-ff-only")
+    @JsonProperty("squash-ff-only")
     SQUASH_FF_ONLY,
 
 
@@ -29,7 +29,7 @@ enum MergeStrategy {
 
         //https://clevercoder.net/2016/12/12/getting-annotation-value-enum-constant/
         Field f = this.getClass().getField(this.name())
-        SerializedName a = f.getAnnotation(SerializedName.class)
+        JsonProperty a = f.getAnnotation(JsonProperty.class)
         return a.value()
 
     }

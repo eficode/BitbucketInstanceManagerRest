@@ -16,7 +16,7 @@ class BitbucketCommit implements BitbucketEntity {
     String id
     String displayId
     BitbucketUser author
-    long authorTimeStamp
+    long authorTimestamp
     BitbucketUser committer
     long committerTimestamp
     String message
@@ -41,7 +41,7 @@ class BitbucketCommit implements BitbucketEntity {
      */
     long getTimeStamp() {
 
-        return [committerTimestamp, authorTimeStamp].findAll { it != 0 }.sort().first()
+        return [committerTimestamp, authorTimestamp].findAll { it != 0 }.sort().first()
 
     }
 

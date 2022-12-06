@@ -68,6 +68,12 @@
         </dependency>
 
 
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.14.1</version>
+        </dependency>
+
 
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -144,10 +150,7 @@
                             <artifactSet>
                                 <excludes>
                                     <exclude>org.codehaus.groovy:*</exclude>
-                                    <!--exclude>org.codehaus.groovy:groovy</exclude>
-                                    <exclude>org.codehaus.groovy:groovy-astbuilder</exclude-->
 
-                                    <!--exclude>com.google.code.gson:gson</exclude-->
                                     <exclude>org.apache.httpcomponents</exclude>
                                     <exclude>commons-*</exclude>
 
@@ -155,10 +158,10 @@
 
                             </artifactSet>
                             <relocations>
-                                <relocation>
+                                <!--relocation>
                                     <pattern>com.google.gson.</pattern>
                                     <shadedPattern>com.eficode.shaded.com.google.gson.</shadedPattern>
-                                </relocation>
+                                </relocation-->
                                 <relocation>
                                     <pattern>kong.unirest.</pattern>
                                     <shadedPattern>com.eficode.shaded.kong.unirest.</shadedPattern>

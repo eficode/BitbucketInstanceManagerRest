@@ -3,9 +3,7 @@ package com.eficode.atlassian.bitbucketInstanceManager.impl
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject as BitbucketProject
-
-
-import com.google.gson.Gson
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.gson.reflect.TypeToken
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
@@ -24,9 +22,9 @@ class BitbucketWebhookBody {
     String date
     Actor actor
     BitbucketRepo repository
-    ArrayList<Change> changes //TODO Should use BitbucketChange
+    ArrayList<BitbucketWebhookChange> changes
 
-    static Gson objectMapper = new Gson()
+    static ObjectMapper objectMapper = new ObjectMapper()
 
 
     boolean isValid() {
@@ -79,7 +77,7 @@ class BitbucketWebhookBody {
      * @return A map representation of the webhook
      */
     static Map getMapBody(String jsonString) {
-        return objectMapper.fromJson(jsonString, Map)
+        return objectMapper.readValue(jsonString, Map)
     }
 
     static BitbucketWebhookBody fromJson(String jsonString, BitbucketInstanceManagerRest instance) {
@@ -88,8 +86,8 @@ class BitbucketWebhookBody {
 
         assert instance.baseUrl == getInstanceUrl(jsonString) : "The URL of the webhook and the BitbucketInstanceManagerRest provided does no match"
 
-        Type webhookBodyType = TypeToken.get(BitbucketWebhookBody).getType()
-        BitbucketWebhookBody body = objectMapper.fromJson(jsonString, webhookBodyType)
+
+        BitbucketWebhookBody body = objectMapper.readValue(jsonString, BitbucketWebhookBody.class)
 
         //Re-fetch repository to get a proper object
         body.repository = instance.getProject(body.repository.projectKey).getRepo(body.repository.slug)
@@ -111,19 +109,7 @@ class BitbucketWebhookBody {
     }
 
 
-    class Change {
 
-
-        BitbucketBranch ref
-        String refId
-        String fromHash
-        String toHash
-        String type
-
-        BitbucketBranch getBranch() {
-            return ref
-        }
-    }
 
 
 

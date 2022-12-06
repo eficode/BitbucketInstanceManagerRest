@@ -1,8 +1,11 @@
 package com.eficode.atlassian.bitbucketInstanceManager.model
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.type.ArrayType
 import com.google.gson.reflect.TypeToken
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
@@ -21,7 +24,7 @@ trait BitbucketEntity {
     static abstract Logger log
     BitbucketInstanceManagerRest instance
     abstract BitbucketEntity parent
-    static Gson objectMapper = new Gson()
+    static ObjectMapper objectMapper = new ObjectMapper()
 
 
     static String createUrlParameterString(Map<String, Object> urlParameters) {
@@ -107,27 +110,26 @@ trait BitbucketEntity {
 
     static ArrayList<BitbucketEntity> fromJson(String rawJson, Class clazz, BitbucketInstanceManagerRest instance, Object parent) {
 
-        Type type
+
         ArrayList<BitbucketEntity> result
 
 
         if (rawJson.startsWith("[")) {
 
-            type = TypeToken.getParameterized(ArrayList.class, clazz).getType()
+            ArrayType type = getObjectMapper().getTypeFactory().constructArrayType(clazz)
 
-            result = getObjectMapper().fromJson(rawJson, type)
+            result = getObjectMapper().readValue(rawJson,type) as ArrayList<BitbucketEntity>
         } else if (rawJson.startsWith("{")) {
-            type = TypeToken.get(clazz).getType()
-            result = [getObjectMapper().fromJson(rawJson, type)]
+
+            result = [getObjectMapper().readValue(rawJson, clazz)] as ArrayList<BitbucketEntity>
         } else {
             throw new InputMismatchException("Unexpected json format:" + rawJson.take(15))
         }
 
         result.each {
-            it.setParent(parent)
+            it.setParent(parent as BitbucketEntity)
             it.setInstance(instance)
 
-            //ArrayList<Field> fields = clazz.fields
 
 
         }
@@ -142,12 +144,12 @@ trait BitbucketEntity {
 
     static ArrayList<Map> jsonPagesToGenerics(ArrayList jsonPages) {
 
-        return getObjectMapper().fromJson(jsonPages.toString(), TypeToken.getParameterized(ArrayList.class, Map).getType())
+        return objectMapper.readValue(jsonPages.toString(), Map[].class)
     }
 
     static Map jsonPagesToGenerics(JsonNode jsonNode) {
 
-        return getObjectMapper().fromJson(jsonNode.toString(), TypeToken.get(Map).getType())
+        return objectMapper.readValue(jsonNode.toString(), Map.class)
     }
 
     //TODO move to enum trait/interface
@@ -155,7 +157,7 @@ trait BitbucketEntity {
 
         //https://clevercoder.net/2016/12/12/getting-annotation-value-enum-constant/
         Field f = en.getClass().getField(en.name())
-        SerializedName a = f.getAnnotation(SerializedName.class)
+        JsonProperty a = f.getAnnotation(JsonProperty.class)
         return a.value()
     }
 

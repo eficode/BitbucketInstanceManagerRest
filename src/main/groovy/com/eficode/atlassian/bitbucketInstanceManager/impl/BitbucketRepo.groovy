@@ -11,7 +11,7 @@ import kong.unirest.UnirestInstance
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import unirest.shaded.com.google.gson.annotations.SerializedName
-
+import com.fasterxml.jackson.annotation.JsonProperty
 import java.nio.charset.StandardCharsets
 
 class BitbucketRepo implements BitbucketEntity {
@@ -28,7 +28,7 @@ class BitbucketRepo implements BitbucketEntity {
     public BitbucketProject project
     static Logger log = LoggerFactory.getLogger(BitbucketRepo)
 
-    @SerializedName("public")
+    @JsonProperty("public")
     public boolean isPublic
     public boolean archived
     public Map<String, ArrayList> links = ["clone": [[:]], "self": [[:]]]

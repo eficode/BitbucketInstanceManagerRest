@@ -1,7 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager.model
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.google.gson.annotations.SerializedName
+import com.fasterxml.jackson.annotation.JsonProperty
 
 
 class BitbucketPrParticipant implements BitbucketEntity{
@@ -9,7 +9,7 @@ class BitbucketPrParticipant implements BitbucketEntity{
     BitbucketUser user
 
 
-    @SerializedName("lastReviewedCommit")
+    @JsonProperty("lastReviewedCommit")
     String lastReviewedCommitId
 
     String role //AUTHOR, REVIEWER, PARTICIPANT

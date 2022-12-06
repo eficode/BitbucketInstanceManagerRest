@@ -1,7 +1,8 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
-import com.google.gson.Gson
+import com.fasterxml.jackson.databind.ObjectMapper
+
 import com.google.gson.reflect.TypeToken
 
 import java.lang.reflect.Type
@@ -19,7 +20,7 @@ class BitbucketWebhookInvocation {
     Long finish
     Request request
     Result result
-    static Gson objectMapper = new Gson()
+    static ObjectMapper objectMapper = new ObjectMapper()
 
     class Request {
         String url
@@ -38,8 +39,8 @@ class BitbucketWebhookInvocation {
 
 
     static BitbucketWebhookInvocation fromJson(String jsonString) {
-        Type webhookBodyType = TypeToken.get(BitbucketWebhookInvocation).getType()
-        BitbucketWebhookInvocation invocation = objectMapper.fromJson(jsonString, webhookBodyType)
+
+        BitbucketWebhookInvocation invocation = objectMapper.readValue(jsonString, BitbucketWebhookInvocation.class)
 
         return invocation
 
