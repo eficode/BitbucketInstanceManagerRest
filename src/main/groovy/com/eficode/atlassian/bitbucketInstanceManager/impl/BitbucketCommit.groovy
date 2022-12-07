@@ -21,10 +21,10 @@ class BitbucketCommit implements BitbucketEntity {
     long committerTimestamp
     String message
     public BitbucketRepo repository
+    Map properties
     Logger log = LoggerFactory.getLogger(this.class)
 
     ArrayList<Map> parents = [["id": "", "displayId": ""]]
-    //ArrayList<Map<String,String>> parents = [["id": "", "displayId": ""]]
 
 
     static final DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
