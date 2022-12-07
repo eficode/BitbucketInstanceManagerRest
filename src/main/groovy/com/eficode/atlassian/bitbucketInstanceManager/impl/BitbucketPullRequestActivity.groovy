@@ -16,6 +16,11 @@ class BitbucketPullRequestActivity implements BitbucketEntity{
 
 
     @Override
+    void setParent(BitbucketEntity pullRequest) {
+        this.pullRequest = pullRequest as BitbucketPullRequest
+    }
+
+    @Override
     boolean isValid() {
         return validJsonEntity && id && pullRequest && user && (commit == null || commit.isValid())
     }
@@ -25,7 +30,7 @@ class BitbucketPullRequestActivity implements BitbucketEntity{
 
         ArrayList<JsonNode> rawActs = getPrActivities(pr.newUnirest, pr.repo.projectKey, pr.repo.slug, pr.id, maxActivities)
 
-        ArrayList<BitbucketPullRequestActivity> activities = fromJson(rawActs.toString(),BitbucketPullRequestActivity,pr.instance)
+        ArrayList<BitbucketPullRequestActivity> activities = fromJson(rawActs.toString(),BitbucketPullRequestActivity,pr.instance, pr)
 
         //Re-fetch the commits to get rich data
         activities.findAll {it.commit != null}.each { it.commit = pr.repo.getCommit(it.commit.id)}

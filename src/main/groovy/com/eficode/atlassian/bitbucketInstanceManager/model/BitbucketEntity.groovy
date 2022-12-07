@@ -31,11 +31,15 @@ trait BitbucketEntity {
     static Logger entityLog = LoggerFactory.getLogger(BitbucketEntity.class)
     private BitbucketInstanceManagerRest localInstance
 
+
     static ObjectMapper objectMapper = new ObjectMapper()
 
     BitbucketInstanceManagerRest getInstance() {
         return this.localInstance
     }
+
+
+    abstract void setParent(BitbucketEntity parent)
 
     /**
      * Returns true if the field should have an instance set
@@ -88,7 +92,7 @@ trait BitbucketEntity {
 
                 def childObject = field.get(this)
 
-                //If field is not empty
+                //If field contains a BitbucketEntity
                 if (childObject instanceof BitbucketEntity) {
 
                     //If instance is not already set
@@ -96,6 +100,7 @@ trait BitbucketEntity {
                         entityLog.debug("\t\tUpdating object child field: " + field.name + " (${field.type.simpleName})")
                         childObject.invokeMethod("setInstance", instance)
                     }
+                //If field contains an array of BitbucketEntity´s
                 } else if (childObject instanceof ArrayList && fieldNeedsInstance(field)) {
                     entityLog.debug("\t\tUpdating object child field: " + field.name + " (${field.type.simpleName})")
                     childObject.each {
@@ -194,7 +199,7 @@ trait BitbucketEntity {
 
     }
 
-    static ArrayList<BitbucketEntity> fromJson(String rawJson, Class clazz, BitbucketInstanceManagerRest instance) {
+    static ArrayList<BitbucketEntity> fromJson(String rawJson, Class clazz, BitbucketInstanceManagerRest instance, BitbucketEntity parent) {
 
 
         entityLog.info("Creating ${clazz.simpleName} from json")
@@ -219,10 +224,11 @@ trait BitbucketEntity {
         entityLog.debug("\tCreated ${result.size()} " + clazz.simpleName + " object" + (result.size() > 1 ? "s" : ""))
         result.each {
             it.setInstance(instance)
+            it.setParent(parent)
         }
 
 
-        entityLog.info("Is valid json:" + result.first().validJsonEntity.toString())
+        entityLog.info("Is valid json:" + result?.first()?.validJsonEntity?.toString())
 
         if (false && clazz == BitbucketPullRequest) {
             BitbucketPullRequest pr = result.first()

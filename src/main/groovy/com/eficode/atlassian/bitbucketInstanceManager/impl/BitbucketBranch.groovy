@@ -26,6 +26,10 @@ class BitbucketBranch implements BitbucketEntity{
         return isValidJsonEntity() && id && latestCommit && latestChangeset && repo && (type == "BRANCH")
     }
 
+    @Override
+    void setParent(BitbucketEntity repo) {
+        this.repo = repo as BitbucketRepo
+    }
     String toString() {
         return displayId
     }
@@ -75,7 +79,7 @@ class BitbucketBranch implements BitbucketEntity{
 
         ArrayList<String> rawResponse = getJsonPages(repo.newUnirest,url,maxMatches,[filterText: filter])
 
-        ArrayList<BitbucketBranch> branches = fromJson(rawResponse.toString(),BitbucketBranch,repo.instance)
+        ArrayList<BitbucketBranch> branches = fromJson(rawResponse.toString(),BitbucketBranch,repo.instance, repo)
         return branches
 
 

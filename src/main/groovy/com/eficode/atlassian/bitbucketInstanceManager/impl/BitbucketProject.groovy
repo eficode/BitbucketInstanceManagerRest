@@ -30,6 +30,11 @@ public class BitbucketProject implements BitbucketEntity {
     boolean isPublic
 
 
+    @Override
+    void setParent(BitbucketEntity instance) {
+        this.instance = instance as BitbucketInstanceManagerRest
+    }
+
 
 
     boolean equals(Object object) {
@@ -123,7 +128,7 @@ public class BitbucketProject implements BitbucketEntity {
     static ArrayList<BitbucketProject> getProjects(BitbucketInstanceManagerRest bbInstance, long maxProjects = 25) {
 
         ArrayList<String> rawProjects = getProjects(bbInstance.newUnirest, maxProjects)
-        ArrayList<BitbucketProject> projects = fromJson(rawProjects.toString(), BitbucketProject, bbInstance)
+        ArrayList<BitbucketProject> projects = fromJson(rawProjects.toString(), BitbucketProject, bbInstance, bbInstance)
         assert projects.every { it.isValid() }: "Library returned invalid projects"
         return projects
 
@@ -152,7 +157,7 @@ public class BitbucketProject implements BitbucketEntity {
 
         assert rawProject.size() == 1: "Error getting project with key:" + projectKey
 
-        return fromJson(rawProject.first().toString(), BitbucketProject, bbInstance).find { it.valid } as BitbucketProject
+        return fromJson(rawProject.first().toString(), BitbucketProject, bbInstance, bbInstance).find { it.valid } as BitbucketProject
     }
 
 

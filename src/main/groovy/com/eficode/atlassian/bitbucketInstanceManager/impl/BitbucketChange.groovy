@@ -19,6 +19,12 @@ class BitbucketChange implements BitbucketEntity{
     BitbucketCommit commit
     static Logger log = LoggerFactory.getLogger(BitbucketChange)
 
+    @Override
+    void setParent(BitbucketEntity commit) {
+        this.commit = commit as BitbucketCommit
+    }
+
+
 
     boolean isValid() {
 

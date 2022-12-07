@@ -1,6 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager.model
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
+import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
@@ -36,6 +37,12 @@ class BitbucketUser implements BitbucketEntity{
     boolean isValid() {
         return validJsonEntity && name && emailAddress && displayName
     }
+
+    @Override
+    void setParent(BitbucketEntity repo) {
+        this.instance = repo as BitbucketInstanceManagerRest
+    }
+
 
 
     String toString() {

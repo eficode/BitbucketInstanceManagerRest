@@ -45,16 +45,10 @@ class BitbucketRepo implements BitbucketEntity {
 
     }
 
-    /*
-    void setProject(BitbucketProject project) {
-        this.project = project
+    @Override
+    void setParent(BitbucketEntity repo) {
+        this.project = repo as BitbucketProject
     }
-
-    BitbucketProject getProject() {
-        return this.project
-    }
-
-     */
 
 
 
@@ -100,7 +94,7 @@ class BitbucketRepo implements BitbucketEntity {
     static ArrayList<BitbucketRepo> getRepos(BitbucketProject project, long maxRepos = 50) {
         ArrayList<String> rawRepos = getReposRaw(project.newUnirest, project.key, maxRepos)
 
-        ArrayList<BitbucketRepo> repos = fromJson(rawRepos.toString(), BitbucketRepo, project.instance)
+        ArrayList<BitbucketRepo> repos = fromJson(rawRepos.toString(), BitbucketRepo, project.instance, project)
 
         return repos
     }
@@ -126,7 +120,7 @@ class BitbucketRepo implements BitbucketEntity {
         String repoJson = createRepo(project.key, repoName, project.newUnirest)
 
         //Perhaps have to fetch a new representation of repo from API
-        return fromJson(repoJson, BitbucketRepo, project.instance).first() as BitbucketRepo
+        return fromJson(repoJson, BitbucketRepo, project.instance, project).first() as BitbucketRepo
 
 
     }
@@ -210,7 +204,7 @@ class BitbucketRepo implements BitbucketEntity {
         assert rawOut.size() == 1: "Error getting default branch for repo $name, API returned:" + rawOut
 
 
-        return BitbucketBranch.fromJson(rawOut.toString(), BitbucketBranch, this.instance).first() as BitbucketBranch
+        return BitbucketBranch.fromJson(rawOut.toString(), BitbucketBranch, this.instance, this).first() as BitbucketBranch
 
     }
 
@@ -244,7 +238,7 @@ class BitbucketRepo implements BitbucketEntity {
 
         unirest.shutDown()
 
-        return BitbucketBranch.fromJson(rawResponse.body.toString(), BitbucketBranch, this.instance).first() as BitbucketBranch
+        return BitbucketBranch.fromJson(rawResponse.body.toString(), BitbucketBranch, this.instance, this).first() as BitbucketBranch
 
     }
 
@@ -296,7 +290,7 @@ class BitbucketRepo implements BitbucketEntity {
 
         ArrayList<JsonNode> rawCommits = getJsonPages(newUnirest, url, maxCommits, [since: fromId, until: toId], true)
 
-        return BitbucketCommit.fromJson(rawCommits.toString(), BitbucketCommit, instance)
+        return BitbucketCommit.fromJson(rawCommits.toString(), BitbucketCommit, instance, this)
 
 
     }
@@ -309,7 +303,9 @@ class BitbucketRepo implements BitbucketEntity {
         ArrayList<JsonNode> rawCommits = getJsonPages(newUnirest, url, 1)
 
 
-        return BitbucketCommit.fromJson(rawCommits.toString(), BitbucketCommit, instance).first() as BitbucketCommit
+        BitbucketCommit commit = BitbucketCommit.fromJson(rawCommits.toString(), BitbucketCommit, instance, this).first() as BitbucketCommit
+        commit.repository = this
+        return commit
 
 
     }
@@ -465,8 +461,8 @@ class BitbucketRepo implements BitbucketEntity {
             throw new Exception("Error updating Bitbucket file, API responded:" + response.body.toPrettyString())
         }
 
-        BitbucketCommit newCommit = BitbucketCommit.fromJson(response.body.toString(), BitbucketCommit, instance).first() as BitbucketCommit
-
+        BitbucketCommit newCommit = BitbucketCommit.fromJson(response.body.toString(), BitbucketCommit, instance, this).first() as BitbucketCommit
+        newCommit.repository = this
 
         return newCommit
     }
