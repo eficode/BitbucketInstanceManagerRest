@@ -28,7 +28,7 @@ class BitbucketPrParticipant implements BitbucketEntity{
     }
 
     String toAtlassianWikiMarkup() {
-        return user.toAtlassianWikiMarkup() + " " + role.capitalize() + " " + status.capitalize()
+        return user.toAtlassianWikiMarkup() + ", *Role:* " + role.toLowerCase().capitalize() + ", *Status:* " + status.toLowerCase().capitalize()
     }
 
 
