@@ -1,7 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
@@ -11,12 +11,12 @@ import org.slf4j.LoggerFactory
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 
-class BitbucketCommit implements BitbucketJsonEntity{
+class BitbucketCommit implements BitbucketEntity {
 
     String id
     String displayId
     BitbucketUser author
-    long authorTimeStamp
+    long authorTimestamp
     BitbucketUser committer
     long committerTimestamp
     String message
@@ -30,10 +30,15 @@ class BitbucketCommit implements BitbucketJsonEntity{
     static final DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
 
-
     String getLink() {
         return baseUrl + "/projects/${repository.projectKey}/repos/${repository.slug}/commits/$id"
     }
+
+    @Override
+    void setParent(BitbucketEntity repo) {
+        this.repository = repo as BitbucketRepo
+    }
+
 
 
     /**
@@ -42,23 +47,10 @@ class BitbucketCommit implements BitbucketJsonEntity{
      */
     long getTimeStamp() {
 
-        return [committerTimestamp, authorTimeStamp].findAll {it != 0}.sort().first()
+        return [committerTimestamp, authorTimestamp].findAll { it != 0 }.sort().first()
 
     }
 
-    @Override
-    BitbucketRepo getParent() {
-        return this.repository
-    }
-
-    @Override
-    void setParent(Object repo) {
-
-        assert repo instanceof BitbucketRepo
-        this.repository = repo as BitbucketRepo
-
-        assert this.repository instanceof BitbucketRepo
-    }
 
     String getProjectKey() {
         return repository.projectKey
@@ -71,7 +63,7 @@ class BitbucketCommit implements BitbucketJsonEntity{
     @Override
     boolean isValid() {
 
-        return isValidJsonEntity() && id && displayId && message && parent instanceof BitbucketRepo && repository.isValid() && author instanceof BitbucketUser
+        return isValidJsonEntity() && id && displayId && message && repository.isValid() && author instanceof BitbucketUser
 
     }
 
@@ -82,6 +74,7 @@ class BitbucketCommit implements BitbucketJsonEntity{
     static String getMergerSymbol() {
         return "🔗"
     }
+
 
     String toString() {
 
@@ -102,10 +95,12 @@ class BitbucketCommit implements BitbucketJsonEntity{
 
     String toAtlassianWikiMarkup() {
 
-        String parentsWithLinks = parents.collect {"[$displayId|${baseUrl + "/projects/${repository.projectKey}/repos/${repository.slug}/commits/$id"}]"}.join(", ")
+        String parentsWithLinks = parents.collect { "[$displayId|${baseUrl + "/projects/${repository.projectKey}/repos/${repository.slug}/commits/$id"}]" }.join(", ")
 
-        String mainOut = "h2. Commit ID: [$displayId|${link}]"  + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
-                "*Author:* [~${author.name}] (Remote user: [${author.name}|${author.getProfileUrl(baseUrl)}])\n\n" +
+        BitbucketPullRequest pr = getPullRequest()
+
+        String mainOut = "h2. Commit ID: [$displayId|${link}]" + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
+                "*Author:* ${author.toAtlassianWikiMarkup()}\n\n" +
                 "*Timestamp:* " + dateFormat.format(new Date(timeStamp as long)) + "\n\n" +
                 "*Repository:* " + repository.toAtlassianWikiMarkupUrl() + "\n\n" +
                 "*Branch:* " + branch.displayId + "\n\n" +
@@ -177,9 +172,6 @@ class BitbucketCommit implements BitbucketJsonEntity{
     }
 
 
-
-
-
     ArrayList<BitbucketChange> getChanges(String projectKey, String repoSlug, String commitId, long maxChanges) {
 
 
@@ -191,7 +183,6 @@ class BitbucketCommit implements BitbucketJsonEntity{
 
         ArrayList<JsonNode> rawChangesResp = getRawChanges(newUnirest, projectKey, repoSlug, commitId, maxChanges)
         ArrayList<BitbucketChange> result = BitbucketChange.fromJson(rawChangesResp.toString(), BitbucketChange, instance, this) as ArrayList<BitbucketChange>
-
 
 
         if (result.isEmpty() && this.isAMerge()) {
@@ -219,6 +210,57 @@ class BitbucketCommit implements BitbucketJsonEntity{
 
 
     /**
+     * Get PRs that involve the commit
+     * IE, commits that are part of the merge suggested by the PR
+     * @param maxPRs Max nr of PRs to return
+     * @return
+     */
+    ArrayList<BitbucketPullRequest> getPullRequestsInvolvingCommit(long maxPRs = 25) {
+
+        return BitbucketPullRequest.getPullRequestsInvolvingCommit(repository, id, maxPRs)
+
+    }
+
+
+    /**
+     * Returns the PR that created this Commit if any
+     * @return
+     */
+    BitbucketPullRequest getPullRequest() {
+
+        ArrayList<BitbucketPullRequest> relatedPrs = getPullRequestsInvolvingCommit(50)
+        relatedPrs = relatedPrs.findAll {
+            it.toRef.id == this.branch.id &&
+                    it.toRef.repo.slug && this.branch.repo.slug
+        }
+        relatedPrs = relatedPrs.findAll {
+            BitbucketCommit prCommit = it.getMergeCommit()
+            prCommit.id == this.id
+        }
+
+        if (relatedPrs.size() > 1) {
+            throw new InputMismatchException("Got several PRs matching commit:" + this.toString())
+        } else if (relatedPrs.size() == 1) {
+            return relatedPrs.first()
+        } else {
+            return null
+        }
+
+    }
+
+    /**
+     * Returns true if this is a commit due to a PR merge/rebase/squash
+     * @return
+     */
+    boolean isAPrMerge() {
+
+        return getPullRequest() != null
+
+
+    }
+
+
+    /**
      * Get the branch that the commit was made in
      * @return
      */
@@ -237,25 +279,22 @@ class BitbucketCommit implements BitbucketJsonEntity{
         //BitbucketBranch.fromRaw(branchesRaw, repository).first()
     }
 
+    BitbucketCommit refreshInfo() {
+        return getCommit(this.repository, this.id)
+    }
 
-    /**
+    static BitbucketCommit getCommit(BitbucketRepo repo, String commitId) {
 
-     static ArrayList<BitbucketCommit> fromRaw(ArrayList rawCommits, BitbucketRepo repo) {
-     ArrayList<BitbucketCommit> bitbucketCommits = fromJson(rawCommits.toString(), BitbucketCommit, repo.parentObject)
-     bitbucketCommits.each { commit ->
-     //Set repo
-     commit.repository = repo
-     //Remove all but id and displayId, as getCommit and getCommits return different amount of info
-     commit.parents.each { parentMap ->
-     parentMap.removeAll { key, value ->
-     !((key as String) in ["id", "displayId"])
-     }
-     }
+        String url = "/rest/api/latest/projects/${repo.projectKey}/repos/${repo.slug}/commits/" + commitId
 
-     }
+        ArrayList rawCommits = getJsonPages(repo.newUnirest, url, 1, [:], false)
 
-     return bitbucketCommits
+        assert rawCommits.size() == 1: "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
 
-     }
-     */
+
+        BitbucketCommit commit = fromJson(rawCommits.toString(), BitbucketCommit, repo.instance, repo).first() as BitbucketCommit
+        return commit
+
+    }
+
 }

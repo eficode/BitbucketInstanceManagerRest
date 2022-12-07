@@ -1,10 +1,12 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
+import com.fasterxml.jackson.annotation.JsonAlias
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-class BitbucketBranch implements BitbucketJsonEntity{
+class BitbucketBranch implements BitbucketEntity{
 
     static Logger log = LoggerFactory.getLogger(BitbucketRepo)
 
@@ -14,6 +16,9 @@ class BitbucketBranch implements BitbucketJsonEntity{
     String latestCommit
     String latestChangeset
     boolean isDefault
+
+    @JsonProperty("repo")
+    @JsonAlias("repository")
     BitbucketRepo repo
 
     boolean isValid() {
@@ -22,18 +27,11 @@ class BitbucketBranch implements BitbucketJsonEntity{
     }
 
     @Override
-    BitbucketRepo getParent() {
-
-        return this.repo
-    }
-
-    @Override
-    void setParent(Object repo) {
-
-        assert repo instanceof BitbucketRepo
+    void setParent(BitbucketEntity repo) {
         this.repo = repo as BitbucketRepo
-
-        assert this.repo instanceof BitbucketRepo
+    }
+    String toString() {
+        return displayId
     }
 
     /**
@@ -81,7 +79,7 @@ class BitbucketBranch implements BitbucketJsonEntity{
 
         ArrayList<String> rawResponse = getJsonPages(repo.newUnirest,url,maxMatches,[filterText: filter])
 
-        ArrayList<BitbucketBranch> branches = fromJson(rawResponse.toString(),BitbucketBranch,repo.instance,repo)
+        ArrayList<BitbucketBranch> branches = fromJson(rawResponse.toString(),BitbucketBranch,repo.instance, repo)
         return branches
 
 

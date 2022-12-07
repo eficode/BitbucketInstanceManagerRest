@@ -1,10 +1,10 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-class BitbucketChange implements BitbucketJsonEntity{
+class BitbucketChange implements BitbucketEntity{
 
     String contentId
     String fromContentId
@@ -19,26 +19,21 @@ class BitbucketChange implements BitbucketJsonEntity{
     BitbucketCommit commit
     static Logger log = LoggerFactory.getLogger(BitbucketChange)
 
+    @Override
+    void setParent(BitbucketEntity commit) {
+        this.commit = commit as BitbucketCommit
+    }
+
+
 
     boolean isValid() {
 
-        return isValidJsonEntity() && contentId &&  commit.isValid() && parent instanceof BitbucketCommit
+        return isValidJsonEntity() && contentId &&  commit.isValid()
 
     }
 
-    @Override
-    BitbucketCommit getParent() {
 
-        return this.commit
-    }
 
-    @Override
-    void setParent(Object commit) {
-
-        assert commit instanceof BitbucketCommit
-        this.commit = commit as BitbucketCommit
-
-    }
 
     String getActionSymbol() {
 

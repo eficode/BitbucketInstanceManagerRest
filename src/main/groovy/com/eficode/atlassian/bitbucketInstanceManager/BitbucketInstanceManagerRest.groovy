@@ -1,23 +1,20 @@
 package com.eficode.atlassian.bitbucketInstanceManager
 
-import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketCommit
+
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject
-import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
-import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketWebhook
-import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
-import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
-import com.google.gson.Gson
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketUser
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.gson.reflect.TypeToken
 import kong.unirest.Cookie
 import kong.unirest.Cookies
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
-import kong.unirest.MultipartBody
 import kong.unirest.Unirest
 import kong.unirest.UnirestException
 import kong.unirest.UnirestInstance
-import kong.unirest.json.JSONArray
 import org.eclipse.jgit.api.CloneCommand
 import org.eclipse.jgit.api.CommitCommand
 import org.eclipse.jgit.api.Git
@@ -34,24 +31,18 @@ import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
-import unirest.shaded.com.google.gson.JsonObject
-import unirest.shaded.com.google.gson.annotations.SerializedName
 
-import java.nio.charset.StandardCharsets
-import java.text.DateFormat
-import java.text.SimpleDateFormat
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
 
-class BitbucketInstanceManagerRest {
+class BitbucketInstanceManagerRest implements BitbucketEntity{
 
     static Logger log = LoggerFactory.getLogger(BitbucketInstanceManagerRest.class)
     String adminUsername
     String adminPassword
-    //JsonObjectMapper objectMapper
     String baseUrl
-    static Gson gson = new Gson()
+    static ObjectMapper objectMapper = new ObjectMapper()
 
     BitbucketInstanceManagerRest(String username, String password, String baseUrl) {
         this.baseUrl = baseUrl
@@ -127,68 +118,30 @@ class BitbucketInstanceManagerRest {
 
     ArrayList<JsonNode> getJsonPages(String subPath, long maxPages, boolean returnValueOnly = true) {
 
-        return getJsonPages(newUnirest, subPath, maxPages, returnValueOnly)
-    }
-
-    static ArrayList<Map> jsonPagesToGenerics(ArrayList jsonPages) {
-
-        return gson.fromJson(jsonPages.toString(), TypeToken.getParameterized(ArrayList.class, Map).getType())
-    }
-
-    static Map jsonPagesToGenerics(JsonNode jsonNode) {
-
-        return gson.fromJson(jsonNode.toString(), TypeToken.get(Map).getType())
+        return getJsonPages(newUnirest, subPath, maxPages, [:],returnValueOnly)
     }
 
 
-    static ArrayList<JsonNode> getJsonPages(UnirestInstance unirest, String subPath, long maxResponses, boolean returnValueOnly = true) {
-
-
-        int start = 0
-        boolean isLastPage = false
-
-        ArrayList responses = []
-
-        while (!isLastPage && start >= 0) {
-
-
-            HttpResponse<JsonNode> response = unirest.get(subPath).accept("application/json").queryString("start", start).asJson()
-
-
-            isLastPage = response?.body?.object?.has("isLastPage") ? response?.body?.object?.get("isLastPage") as boolean : true
-            start = response?.body?.object?.has("nextPageStart") && response.body.object["nextPageStart"] != null ? response.body.object["nextPageStart"] as int : -1
-
-            if (returnValueOnly) {
-                if (response.body.object.has("values")) {
-
-                    responses += response.body.object.get("values") as ArrayList<Map>
-                } else {
-
-                    throw new InputMismatchException("Unexpected body returned from $subPath, expected JSON with \"values\"-node but got: " + response.body.toString())
-                }
-
-            } else {
-                responses += response.body
-            }
-
-            if (maxResponses != 0) {
-                if (responses.size() > maxResponses) {
-                    log.warn("Returned more than expected responses (${responses.size()}) when querying:" + subPath)
-                    responses = responses[0..maxResponses - 1]
-                    break
-                } else if (responses.size() == maxResponses) {
-                    break
-                }
-            }
-
-
-        }
-
-        unirest.shutDown()
-        return responses
-
-
+    @Override
+    void setParent(BitbucketEntity repo) {
+        //Ignored
     }
+
+
+
+
+    String toString() {
+        return adminUsername + "@" + baseUrl
+    }
+
+
+
+    @Override
+    boolean isValid(){
+        return baseUrl && adminPassword && adminUsername
+    }
+
+
 
 
     /** --- Instance Methods --- **/
@@ -364,7 +317,64 @@ class BitbucketInstanceManagerRest {
     }
 
 
+    /** --- User Crud --- **/
 
+
+    /**
+     * Creates a new user
+     * @param email
+     * @param password required if notify == false
+     * @param displayName
+     * @param userName
+     * @param notify If true instead of requiring a password,<br>
+     *      the created user will be notified via email their account has been created and requires a password to be reset.<br>
+     *      This option can only be used if a mail server has been configured.
+     * @param addToDefaultGroup
+     * @return
+     */
+    BitbucketUser createUser(String email, String password, String displayName, String userName, boolean notify = false,  boolean addToDefaultGroup = true) {
+
+        return BitbucketUser.createUser(this, email, password,displayName, userName, notify, addToDefaultGroup)
+    }
+
+    /**
+     * Get users matching the filter
+
+     * @param filter only users with usernames, display name or email addresses containing the supplied string will be returned.
+     * @param maxUsers Max number of users to return
+     * @return An array of BitbucketUser objects
+     */
+    ArrayList<BitbucketUser>getUsers(String filter, long maxUsers) {
+
+        return BitbucketUser.getUsers(this, filter, maxUsers)
+    }
+
+    /**
+     * Set the global permissions of several users
+     * @param users userNames of the users
+     * @param permission The permission that the users should have: LICENSED_USER, PROJECT_CREATE, ADMIN, SYS_ADMIN
+     * @return true on success
+     */
+    boolean setUsersGlobalPermission( ArrayList<BitbucketUser> users, String permission) {
+
+        return BitbucketUser.setUsersGlobalPermission(this, users, permission)
+    }
+
+
+    BitbucketUser getCurrentUser() {
+
+        UnirestInstance unirest = newUnirest
+        String userSlug = unirest.get("/plugins/servlet/applinks/whoami").asString().body
+
+        unirest.shutDown()
+
+
+
+        BitbucketUser user =  getUsers(userSlug, 25).find {it.slug.equalsIgnoreCase(userSlug)}
+
+        return user
+
+    }
 
 
     /** --- GIT CRUD --- **/

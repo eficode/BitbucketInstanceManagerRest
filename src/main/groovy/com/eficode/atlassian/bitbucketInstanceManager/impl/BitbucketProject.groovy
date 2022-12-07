@@ -1,7 +1,9 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import kong.unirest.HttpResponse
 import kong.unirest.JsonNode
 import kong.unirest.UnirestInstance
@@ -10,7 +12,8 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
-class BitbucketProject implements BitbucketJsonEntity {
+
+public class BitbucketProject implements BitbucketEntity {
 
 
     static Logger log = LoggerFactory.getLogger(this.class)
@@ -18,10 +21,18 @@ class BitbucketProject implements BitbucketJsonEntity {
     String id
     String name
     String type
+    String description
     Map<String, ArrayList> links
 
-    @SerializedName("public")
+    @JsonProperty("public")
     boolean isPublic
+
+
+    @Override
+    void setParent(BitbucketEntity instance) {
+        this.instance = instance as BitbucketInstanceManagerRest
+    }
+
 
 
     boolean equals(Object object) {
@@ -31,28 +42,18 @@ class BitbucketProject implements BitbucketJsonEntity {
 
     boolean isValid() {
 
-        return isValidJsonEntity() && key && id && name && type && parent instanceof BitbucketInstanceManagerRest
+        return isValidJsonEntity() && key && id && name && type
 
-    }
-
-    @Override
-    BitbucketInstanceManagerRest getParent() {
-
-        return this.instance
-    }
-
-    @Override
-    void setParent(Object instance) {
-
-        assert instance instanceof BitbucketInstanceManagerRest
-        this.setInstance(instance as BitbucketInstanceManagerRest)
-        assert this.instance instanceof BitbucketInstanceManagerRest
-        assert this.getInstance() instanceof BitbucketInstanceManagerRest
     }
 
 
     String toString() {
-        return name + "(Key: ${key}, ID:) $id"
+        return name + "(Key: ${key}, ID:$id)"
+    }
+
+
+    BitbucketProject refreshInfo() {
+        return getProject(getInstance(), key)
     }
 
 
@@ -126,7 +127,7 @@ class BitbucketProject implements BitbucketJsonEntity {
 
         ArrayList<String> rawProjects = getProjects(bbInstance.newUnirest, maxProjects)
         ArrayList<BitbucketProject> projects = fromJson(rawProjects.toString(), BitbucketProject, bbInstance, bbInstance)
-        assert projects.every {it.isValid()} : "Library returned invalid projects"
+        assert projects.every { it.isValid() }: "Library returned invalid projects"
         return projects
 
     }
@@ -138,16 +139,15 @@ class BitbucketProject implements BitbucketJsonEntity {
     }
 
 
-
     static BitbucketProject getProject(BitbucketInstanceManagerRest bbInstance, String projectKey) {
 
         ArrayList<JsonNode> rawProject
         try {
-             rawProject = getJsonPages(bbInstance.newUnirest,"/rest/api/1.0/projects/$projectKey" as String, 1, [:], false) as ArrayList<JsonNode>
-        }catch(AssertionError ex) {
+            rawProject = getJsonPages(bbInstance.newUnirest, "/rest/api/1.0/projects/$projectKey" as String, 1, [:], false) as ArrayList<JsonNode>
+        } catch (AssertionError ex) {
             if (ex.message.containsIgnoreCase("Project $projectKey does not exist")) {
                 return null
-            }else {
+            } else {
                 throw ex
             }
         }
@@ -166,7 +166,7 @@ class BitbucketProject implements BitbucketJsonEntity {
     }
 
     static boolean deleteProject(BitbucketProject project, boolean deleteRepos = false) {
-        return deleteProject(project.instance,project.key, deleteRepos)
+        return deleteProject(project.instance, project.key, deleteRepos)
     }
 
     /**
@@ -192,8 +192,7 @@ class BitbucketProject implements BitbucketJsonEntity {
                 log.info("\tProject has repositories, deleting them now")
 
 
-
-                ArrayList<BitbucketRepo> projectRepos = getProject(bbInstance,projectKey).getRepos(100)
+                ArrayList<BitbucketRepo> projectRepos = getProject(bbInstance, projectKey).getRepos(100)
                 log.info("\t\tRepos:" + projectRepos.name.join(", "))
 
                 assert BitbucketRepo.deleteRepos(projectRepos): "Error deleting project repos"
@@ -215,17 +214,20 @@ class BitbucketProject implements BitbucketJsonEntity {
     }
 
 
-
-
-
     /** --- REPO CR --- **/
 
     BitbucketRepo getRepo(String repoNameOrSlug) {
         ArrayList<BitbucketRepo> projectRepos = getRepos()
 
-        BitbucketRepo repo = projectRepos.find { it.name == repoNameOrSlug || it.slug == repoNameOrSlug }
+        BitbucketRepo repo = projectRepos.find {
+            it.name == repoNameOrSlug ||
+                    it.slug == repoNameOrSlug
+        }
 
-        log.warn("Could not find repo \"$repoNameOrSlug\" in project \"$this\" ")
+        if (!repo){
+            log.warn("Could not find repo \"$repoNameOrSlug\" in project \"$this\" ")
+        }
+
         return repo
 
     }
@@ -239,9 +241,6 @@ class BitbucketProject implements BitbucketJsonEntity {
     BitbucketRepo createRepo(String repoName) {
         return BitbucketRepo.createRepo(this, repoName)
     }
-
-
-
 
 
 }

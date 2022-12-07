@@ -1,49 +1,49 @@
 package com.eficode.atlassian.bitbucketInstanceManager.model
 
-import com.google.gson.annotations.SerializedName
+import com.fasterxml.jackson.annotation.JsonProperty
 
 public enum WebhookEventType {
 
 
-    @SerializedName("mirror:repo_synchronized")
+    @JsonProperty("mirror:repo_synchronized")
     MIRROR_REPO_SYNCHRONIZED,
-    @SerializedName("pr:comment:added")
+    @JsonProperty("pr:comment:added")
     PR_COMMENT_ADDED,
-    @SerializedName("pr:comment:deleted")
+    @JsonProperty("pr:comment:deleted")
     PR_COMMENT_DELETED,
-    @SerializedName("pr:comment:edited")
+    @JsonProperty("pr:comment:edited")
     PR_COMMENT_EDITED,
-    @SerializedName("pr:declined")
+    @JsonProperty("pr:declined")
     PR_DECLINED,
-    @SerializedName("pr:deleted")
+    @JsonProperty("pr:deleted")
     PR_DELETED,
-    @SerializedName("pr:from_ref_updated")
+    @JsonProperty("pr:from_ref_updated")
     PR_FROM_REF_UPDATED,
-    @SerializedName("pr:merged")
+    @JsonProperty("pr:merged")
     PR_MERGED,
-    @SerializedName("pr:modified")
+    @JsonProperty("pr:modified")
     PR_MODIFIED,
-    @SerializedName("pr:opened")
+    @JsonProperty("pr:opened")
     PR_OPENED,
-    @SerializedName("pr:reviewer:approved")
+    @JsonProperty("pr:reviewer:approved")
     PR_REVIEWER_APPROVED,
-    @SerializedName("pr:reviewer:needs_work")
+    @JsonProperty("pr:reviewer:needs_work")
     PR_REVIEWER_NEEDS_WORK,
-    @SerializedName("pr:reviewer:unapproved")
+    @JsonProperty("pr:reviewer:unapproved")
     PR_REVIEWER_UNAPPROVED,
-    @SerializedName("pr:reviewer:updated")
+    @JsonProperty("pr:reviewer:updated")
     PR_REVIEWER_UPDATED,
-    @SerializedName("repo:comment:added")
+    @JsonProperty("repo:comment:added")
     REPO_COMMENT_ADDED,
-    @SerializedName("repo:comment:deleted")
+    @JsonProperty("repo:comment:deleted")
     REPO_COMMENT_DELETED,
-    @SerializedName("repo:comment:edited")
+    @JsonProperty("repo:comment:edited")
     REPO_COMMENT_EDITED,
-    @SerializedName("repo:forked")
+    @JsonProperty("repo:forked")
     REPO_FORKED,
-    @SerializedName("repo:modified")
+    @JsonProperty("repo:modified")
     REPO_MODIFIED,
-    @SerializedName("repo:refs_changed")
+    @JsonProperty("repo:refs_changed")
     REPO_REFS_CHANGED
 
 

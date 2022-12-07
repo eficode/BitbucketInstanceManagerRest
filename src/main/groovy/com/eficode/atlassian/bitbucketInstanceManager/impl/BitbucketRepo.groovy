@@ -1,7 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketJsonEntity
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.eficode.atlassian.bitbucketInstanceManager.model.MergeStrategy
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
 import kong.unirest.HttpResponse
@@ -11,10 +11,10 @@ import kong.unirest.UnirestInstance
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import unirest.shaded.com.google.gson.annotations.SerializedName
-
+import com.fasterxml.jackson.annotation.JsonProperty
 import java.nio.charset.StandardCharsets
 
-class BitbucketRepo implements BitbucketJsonEntity {
+class BitbucketRepo implements BitbucketEntity {
 
 
     public String slug
@@ -28,33 +28,25 @@ class BitbucketRepo implements BitbucketJsonEntity {
     public BitbucketProject project
     static Logger log = LoggerFactory.getLogger(BitbucketRepo)
 
-    @SerializedName("public")
+
+    @JsonProperty("public")
     public boolean isPublic
     public boolean archived
     public Map<String, ArrayList> links = ["clone": [[:]], "self": [[:]]]
 
+    BitbucketInstanceManagerRest instanceLocalCache
 
     @Override
     boolean isValid() {
 
-        return isValidJsonEntity() && slug && id && name && hierarchyId && project?.isValid() && instance instanceof BitbucketInstanceManagerRest
+        return isValidJsonEntity() && slug && id && name && hierarchyId && project.isValid() && instance instanceof BitbucketInstanceManagerRest
 
 
     }
 
     @Override
-    BitbucketProject getParent() {
-
-        return this.project
-    }
-
-    @Override
-    void setParent(Object proj) {
-
-        assert proj instanceof BitbucketProject
-        this.project = proj as BitbucketProject
-
-        assert this.project instanceof BitbucketProject
+    void setParent(BitbucketEntity repo) {
+        this.project = repo as BitbucketProject
     }
 
 
@@ -209,8 +201,29 @@ class BitbucketRepo implements BitbucketJsonEntity {
         ArrayList rawOut = getJsonPages(newUnirest, "/rest/api/latest/projects/${project.key}/repos/${slug}/default-branch", 1, [:], false)
         assert rawOut.size() == 1: "Error getting default branch for repo $name, API returned:" + rawOut
 
+        //Re-fetch to get complete info
+        try {
+            return BitbucketBranch.getBranch(rawOut.first().object.get("displayId").toString(), this)
+        } catch (AssertionError ex) {
+            if (ex.message.contains("Error getting branch, ID matches 0 branches")) {
+                log.warn("Repo default branch is set to a branch that is yet to have been created, returning invalid Branch object")
 
-        return BitbucketBranch.fromJson(rawOut.toString(), BitbucketBranch, this.instance, this).first() as BitbucketBranch
+                BitbucketBranch invalidBranch = new BitbucketBranch()
+                invalidBranch.with {
+                    it.id = rawOut.first().object.get("id")
+                    it.displayId = rawOut.first().object.get("displayId")
+                    it.type = rawOut.first().object.get("type")
+                    it.repo = this
+                }
+
+                return invalidBranch
+            } else {
+                throw ex
+            }
+        }
+
+
+        //return BitbucketBranch.fromJson(rawOut.toString(), BitbucketBranch, this.instance, this).first() as BitbucketBranch
 
     }
 
@@ -309,22 +322,16 @@ class BitbucketRepo implements BitbucketJsonEntity {
         ArrayList<JsonNode> rawCommits = getJsonPages(newUnirest, url, 1)
 
 
-        return BitbucketCommit.fromJson(rawCommits.toString(), BitbucketCommit, instance, this).first() as BitbucketCommit
+        BitbucketCommit commit = BitbucketCommit.fromJson(rawCommits.toString(), BitbucketCommit, instance, this).first() as BitbucketCommit
+        commit.repository = this
+        return commit
 
 
     }
 
     BitbucketCommit getCommit(String commitId) {
 
-        String url = "/rest/api/latest/projects/${project.key}/repos/${slug}/commits/" + commitId
-
-        ArrayList rawCommits = getJsonPages(newUnirest, url, 1, [:], false)
-
-        assert rawCommits.size() == 1: "Error getting commit $commitId, API returned ${rawCommits.size()} matches"
-
-
-        BitbucketCommit commit = BitbucketCommit.fromJson(rawCommits.toString(), BitbucketCommit, instance, this).first() as BitbucketCommit
-        return commit
+        return BitbucketCommit.getCommit(this, commitId)
 
     }
 
@@ -351,7 +358,6 @@ class BitbucketRepo implements BitbucketJsonEntity {
 
         return newCommit
     }
-
 
 
     String getFileContent(String repoFilePath, String branchName = "", String commitId = "") {
@@ -473,8 +479,8 @@ class BitbucketRepo implements BitbucketJsonEntity {
             throw new Exception("Error updating Bitbucket file, API responded:" + response.body.toPrettyString())
         }
 
-        BitbucketCommit newCommit = BitbucketCommit.fromJson(response.body.toString(), BitbucketCommit, instance, this as BitbucketRepo).first() as BitbucketCommit
-
+        BitbucketCommit newCommit = BitbucketCommit.fromJson(response.body.toString(), BitbucketCommit, instance, this).first() as BitbucketCommit
+        newCommit.repository = this
 
         return newCommit
     }
@@ -630,11 +636,11 @@ class BitbucketRepo implements BitbucketJsonEntity {
      * @param toBranch Destination branch, ie master
      * @return The new PR object
      */
-    BitbucketPullRequest createPullRequest(BitbucketBranch fromRef, BitbucketBranch toBranch) {
+    static BitbucketPullRequest createPullRequest(BitbucketBranch fromRef, BitbucketBranch toBranch) {
         return BitbucketPullRequest.createPullRequest(fromRef, toBranch)
     }
 
-    BitbucketPullRequest createPullRequest(String title, String description, BitbucketBranch fromRef, BitbucketBranch toBranch) {
+    static BitbucketPullRequest createPullRequest(String title, String description, BitbucketBranch fromRef, BitbucketBranch toBranch) {
 
         return BitbucketPullRequest.createPullRequest(title, description, fromRef.id, toBranch.id, toBranch.repo)
     }
@@ -664,7 +670,7 @@ class BitbucketRepo implements BitbucketJsonEntity {
         return BitbucketWebhook.createWebhook(name, remoteUrl, this, events, secret, newUnirest)
     }
 
-    boolean deleteWebhook(BitbucketWebhook webhook) {
+    static boolean deleteWebhook(BitbucketWebhook webhook) {
         return BitbucketWebhook.deleteWebhook(webhook)
     }
 
