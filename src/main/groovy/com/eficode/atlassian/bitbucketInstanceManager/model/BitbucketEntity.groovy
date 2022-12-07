@@ -227,65 +227,7 @@ trait BitbucketEntity {
             it.setParent(parent)
         }
 
-
-        entityLog.info("Is valid json:" + result?.first()?.validJsonEntity?.toString())
-
-        if (false && clazz == BitbucketPullRequest) {
-            BitbucketPullRequest pr = result.first()
-            ArrayList<Field> fields = clazz.getFields().findAll { Traits.findTraits(new ClassNode(it.type)).size() == 1 }
-            ArrayList<Field> dfields = clazz.declaredFields.findAll { Traits.findTraits(new ClassNode(it.type)).size() == 1 }
-
-
-            println("Declared fields:")
-            dfields.each { field ->
-                boolean accessible = field.canAccess(pr)
-
-                accessible ? null : field.setAccessible(true)
-
-                println("Field name: " + field.name)
-                field.setAccessible(true)
-                println("\tField value: " + field.get(pr))
-
-
-                accessible ? null : field.setAccessible(false)
-
-
-            }
-
-            println("Pr Instance:" + pr.instance)
-            println("Participant Instance:" + pr.participants.instance)
-
-            true
-        }
-
-        if (clazz == BitbucketRepo && false) {
-            BitbucketRepo repo = result.first()
-            ArrayList<Field> decFields = clazz.declaredFields
-            ArrayList<Field> allFields = clazz.fields
-            ArrayList<Field> fields = clazz.getFields().findAll { Traits.findTraits(new ClassNode(it.type)).size() == 1 }
-            ArrayList<Field> dfields = clazz.declaredFields.findAll { Traits.findTraits(new ClassNode(it.type)).size() == 1 }
-
-
-            fields.each { field ->
-                println(field.name + "\n\t" + field.get(result.first()))
-
-            }
-            printf("Declared fields:")
-            dfields.each { field ->
-                println(field.name)
-                field.setAccessible(true)
-
-                println("\t" + field.get(repo))
-
-            }
-
-            println(repo.instance.baseUrl)
-            println(repo.project)
-
-
-            true
-        }
-
+        assert result.every {it.isValid()} : "Error creating valid ${clazz.simpleName} from JSON"
 
         return result
 

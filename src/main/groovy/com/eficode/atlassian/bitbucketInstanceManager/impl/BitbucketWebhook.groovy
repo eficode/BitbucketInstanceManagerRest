@@ -38,7 +38,6 @@ class BitbucketWebhook implements BitbucketEntity {
                 id &&
                 url &&
                 repo &&
-                parent &&
                 instance &&
                 events.every { it instanceof WebhookEventType }
     }

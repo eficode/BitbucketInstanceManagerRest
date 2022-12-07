@@ -29,7 +29,6 @@ class BitbucketRepo implements BitbucketEntity {
     static Logger log = LoggerFactory.getLogger(BitbucketRepo)
 
 
-
     @JsonProperty("public")
     public boolean isPublic
     public boolean archived
@@ -49,7 +48,6 @@ class BitbucketRepo implements BitbucketEntity {
     void setParent(BitbucketEntity repo) {
         this.project = repo as BitbucketProject
     }
-
 
 
     boolean equals(Object object) {
@@ -203,8 +201,29 @@ class BitbucketRepo implements BitbucketEntity {
         ArrayList rawOut = getJsonPages(newUnirest, "/rest/api/latest/projects/${project.key}/repos/${slug}/default-branch", 1, [:], false)
         assert rawOut.size() == 1: "Error getting default branch for repo $name, API returned:" + rawOut
 
+        //Re-fetch to get complete info
+        try {
+            return BitbucketBranch.getBranch(rawOut.first().object.get("displayId").toString(), this)
+        } catch (AssertionError ex) {
+            if (ex.message.contains("Error getting branch, ID matches 0 branches")) {
+                log.warn("Repo default branch is set to a branch that is yet to have been created, returning invalid Branch object")
 
-        return BitbucketBranch.fromJson(rawOut.toString(), BitbucketBranch, this.instance, this).first() as BitbucketBranch
+                BitbucketBranch invalidBranch = new BitbucketBranch()
+                invalidBranch.with {
+                    it.id = rawOut.first().object.get("id")
+                    it.displayId = rawOut.first().object.get("displayId")
+                    it.type = rawOut.first().object.get("type")
+                    it.repo = this
+                }
+
+                return invalidBranch
+            } else {
+                throw ex
+            }
+        }
+
+
+        //return BitbucketBranch.fromJson(rawOut.toString(), BitbucketBranch, this.instance, this).first() as BitbucketBranch
 
     }
 
@@ -312,7 +331,7 @@ class BitbucketRepo implements BitbucketEntity {
 
     BitbucketCommit getCommit(String commitId) {
 
-       return BitbucketCommit.getCommit(this, commitId)
+        return BitbucketCommit.getCommit(this, commitId)
 
     }
 
@@ -339,7 +358,6 @@ class BitbucketRepo implements BitbucketEntity {
 
         return newCommit
     }
-
 
 
     String getFileContent(String repoFilePath, String branchName = "", String commitId = "") {

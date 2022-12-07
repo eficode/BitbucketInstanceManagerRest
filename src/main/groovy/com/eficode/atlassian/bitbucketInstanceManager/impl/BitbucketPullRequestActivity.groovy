@@ -18,6 +18,8 @@ class BitbucketPullRequestActivity implements BitbucketEntity{
     @Override
     void setParent(BitbucketEntity pullRequest) {
         this.pullRequest = pullRequest as BitbucketPullRequest
+
+        this.commit?.setParent(this.pullRequest.repo)
     }
 
     @Override
