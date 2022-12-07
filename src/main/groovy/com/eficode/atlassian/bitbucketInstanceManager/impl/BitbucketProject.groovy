@@ -2,8 +2,6 @@ package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntityDeserializer
-import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketProjectDeserializer
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import kong.unirest.HttpResponse
