@@ -3,6 +3,7 @@ package com.eficode.atlassian.bitbucketInstanceManager.impl
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketProject as BitbucketProject
+import com.eficode.atlassian.bitbucketInstanceManager.model.BitbucketEntity
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.gson.reflect.TypeToken
 import unirest.shaded.com.google.gson.annotations.SerializedName
@@ -17,7 +18,7 @@ import java.lang.reflect.Type
  *
  */
 
-class BitbucketWebhookBody {
+class BitbucketWebhookBody implements BitbucketEntity {
     String eventKey
     String date
     Actor actor
@@ -26,6 +27,15 @@ class BitbucketWebhookBody {
 
     static ObjectMapper objectMapper = new ObjectMapper()
 
+    @Override
+    void setParent(BitbucketEntity repo) {
+
+        this.repository = repo as BitbucketRepo
+        this.changes.each {
+            it.setParent(repo)
+        }
+
+    }
 
     boolean isValid() {
 
@@ -56,7 +66,7 @@ class BitbucketWebhookBody {
      * @param jsonString The raw webhook body
      * @return ex: http://bitbucket.domain.se:7990
      */
-    static String getInstanceUrl(String jsonString ) {
+    static String getInstanceUrl(String jsonString) {
 
         Map bodyMap = getMapBody(jsonString)
 
@@ -70,7 +80,7 @@ class BitbucketWebhookBody {
         return url
     }
 
-    BitbucketProject getProject(){
+    BitbucketProject getProject() {
         return repository?.project
     }
 
@@ -87,16 +97,16 @@ class BitbucketWebhookBody {
 
         assert jsonString[0] == "{": "Expected a Json object starting with \"{\""
 
-        assert instance.baseUrl == getInstanceUrl(jsonString) : "The URL of the webhook and the BitbucketInstanceManagerRest provided does no match"
+        assert instance.baseUrl == getInstanceUrl(jsonString): "The URL of the webhook and the BitbucketInstanceManagerRest provided does no match"
 
 
         BitbucketWebhookBody body = objectMapper.readValue(jsonString, BitbucketWebhookBody.class)
 
         //Re-fetch repository to get a proper object
-        body.repository = instance.getProject(body.repository.projectKey).getRepo(body.repository.slug)
+        body.setParent(instance.getProject(body.repository.projectKey).getRepo(body.repository.slug))
 
 
-        assert body.isValid() : "Error creating WebhookBody from input:" + jsonString
+        assert body.isValid(): "Error creating WebhookBody from input:" + jsonString
         return body
     }
 
@@ -110,10 +120,6 @@ class BitbucketWebhookBody {
         String type
         LinkedHashMap links
     }
-
-
-
-
 
 
 }
