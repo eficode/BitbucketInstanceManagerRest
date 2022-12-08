@@ -63,7 +63,10 @@ class BitbucketWebhookBody {
 
         ArrayList<String> hrefs = bodyMap?.repository?.links?.self?.href
         String url = hrefs.size() ? hrefs.first() : null
-        url = url.contains("/projects") ? url.takeBefore("/projects") : null
+
+
+        url = url.contains("/projects") ? url.take(url.indexOf("/projects")) : null
+
         return url
     }
 
