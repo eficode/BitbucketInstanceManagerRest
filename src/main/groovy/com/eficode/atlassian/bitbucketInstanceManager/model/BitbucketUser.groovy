@@ -53,6 +53,10 @@ class BitbucketUser implements BitbucketEntity{
         return "[~${name}] (Remote user: [${name}|${getProfileUrl(instance.baseUrl)}])"
     }
 
+    String toMarkdown() {
+        return "[${name}](${getProfileUrl(baseUrl)})"
+    }
+
 
     /**
      * Set the global permissions of one or several users

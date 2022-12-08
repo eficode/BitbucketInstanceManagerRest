@@ -24,13 +24,16 @@ class BitbucketPrParticipant implements BitbucketEntity{
     }
 
     String toString() {
-        return user.toString() + " (${role})"
+        return user.toString() + " (Role: ${role.toLowerCase().capitalize()}, Status: ${status.toLowerCase().capitalize()})"
     }
 
     String toAtlassianWikiMarkup() {
         return user.toAtlassianWikiMarkup() + ", *Role:* " + role.toLowerCase().capitalize() + ", *Status:* " + status.toLowerCase().capitalize()
     }
 
+    String toMarkdown() {
+        return user.toMarkdown() + ", **Role:** " + role.toLowerCase().capitalize() + ", **Status:** " + status.toLowerCase().capitalize()
+    }
 
     @Override
     boolean isValid() {

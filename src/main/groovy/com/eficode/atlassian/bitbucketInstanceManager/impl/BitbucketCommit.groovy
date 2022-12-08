@@ -110,6 +110,11 @@ class BitbucketCommit implements BitbucketEntity {
 
         message.eachLine { mainOut += " * " + it + "\n" }
 
+        if (pr) {
+            mainOut += "\n\\\\\n ---- \n\\\\\n"
+            mainOut += pr.toAtlassianWikiMarkup()
+        }
+
         mainOut += "\n\\\\\n ---- \n\\\\\n"
 
 
@@ -131,7 +136,7 @@ class BitbucketCommit implements BitbucketEntity {
 
 
         String mainOut = "## Commit ID: " + displayId + (isAMerge() ? " " + mergerSymbol : "") + "\n" +
-                "**Author:** [${author.name}](${author.getProfileUrl(baseUrl)}) \n\n" +
+                "**Author:** ${author.toMarkdown()} \n\n" +
                 "**Timestamp:** " + dateFormat.format(new Date(timeStamp as long)) + "\n\n" +
                 "**Repository:** " + repository.toMarkdownUrl() + "\n\n" +
                 "**Branch:** " + branch.displayId + "\n\n" +
@@ -140,6 +145,13 @@ class BitbucketCommit implements BitbucketEntity {
 
 
         message.eachLine { mainOut += "\t" + it + "\n" }
+
+        BitbucketPullRequest pr = getPullRequest()
+        if (pr) {
+            mainOut += "\n\n"
+            mainOut += pr.toMarkdown()
+        }
+
 
         mainOut += "\n\n"
 

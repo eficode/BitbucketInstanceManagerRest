@@ -21,7 +21,6 @@
 
     <dependencies>
 
-
         <dependency>
             <groupId>com.eficode</groupId>
             <artifactId>devstack</artifactId>

@@ -51,10 +51,17 @@ class BitbucketWebhookBody implements BitbucketEntity {
                 "Changes:\n"
 
         changes.each { change ->
+            BitbucketPullRequest pr = change?.toCommit?.pullRequest
+
             out += "\t\tCommit:\t" + change.toHash.take(11) + "\n"
             out += "\t\tBranch:\t" + change.branch.displayId + "\n"
             out += "\t\tType:\t" + change.type + "\n"
             out += "\t\tFrom commit:\t" + change.fromHash.take(11) + "\n"
+
+            if (pr) {
+                out += "\t\tPull Request:\t" + pr.toString() + "\n"
+                out += "\t\tPR Approved by:\t" + pr.approvers.collect {it.toString()}.join(",") + "\n"
+            }
 
         }
 
