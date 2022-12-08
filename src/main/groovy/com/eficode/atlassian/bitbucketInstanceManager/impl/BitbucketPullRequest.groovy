@@ -269,13 +269,13 @@ class BitbucketPullRequest implements BitbucketEntity {
 
     String toMarkdown() {
 
-        String mainOut = "##. Pull Request: $title (ID: $id)\n\n" +
+        String mainOut = "## Pull Request: $title (ID: $id)\n\n" +
                 "**Description:** \n\n${description.lines().collect {"\t" + it}.join("\n")}\n\n" +
-                "**State:** $state\n" +
-                "**Created:" + dateFormat.format(new Date(createdDate as long))  + "\n\n" +
-                "**Updated:**" + dateFormat.format(new Date(updatedDate as long)) + "\n\n" +
-                "**From Branch:**" + fromRef.displayId + "\t**To Branch:** " + toRef.displayId + "\n\n" +
-                "**Author:**" + author.toMarkdown() + "\n\n" +
+                "**State:** $state\n\n" +
+                "**Created:** " + dateFormat.format(new Date(createdDate as long))  + "\n\n" +
+                "**Updated:** " + dateFormat.format(new Date(updatedDate as long)) + "\n\n" +
+                "**From Branch:** " + fromRef.displayId + "\t**To Branch:** " + toRef.displayId + "\n\n" +
+                "**Author:** " + author.toMarkdown() + "\n\n" +
                 "**Reviewers:**\n" + reviewers.collect {"\t" + it.toMarkdown()}.join("\n") + "\n\n" +
                 "**Participants:**\n" + participants.collect {"\t" + it.toMarkdown()}.join("\n")
 
