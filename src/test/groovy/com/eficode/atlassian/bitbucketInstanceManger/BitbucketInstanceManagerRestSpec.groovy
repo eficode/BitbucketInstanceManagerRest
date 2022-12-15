@@ -76,8 +76,21 @@ class BitbucketInstanceManagerRestSpec extends Specification {
     File repoCacheDir = new File(mainTempDir, "main-repo-cache/").absoluteFile
 
 
+
+
     // run once before the first feature method
     def setupSpec() {
+
+        //Add the shuffle and takeRight methods, normally not available in groovy < 3
+        List.metaClass.shuffled = {  ->
+            Collections.shuffle(delegate as List<?>);
+            return delegate as List<?>
+        }
+        String.metaClass.takeRight = {int num->
+            String src = delegate.toString()
+            return src.substring(src.length() - num, src.length())
+        }
+
 
 
         if (dockerRemoteHost) {
@@ -619,6 +632,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         foundHook.secret == secret
         foundHook.active
 
+
+
         expect:
 
         assert (unExpectedEvents ? bbRepo.getWebhooks(unExpectedEvents, 100).find { it.id == newHook.id } == null : true): "getWebhooks() returned webhook even though it should have been filtered out"
@@ -629,8 +644,8 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         where:
         hookName        | events                                       | secret         | cleanProject
         "All events"    | WebhookEventType.values()                    | null           | true
-        "Random events" | WebhookEventType.values().shuffled().take(5) | null           | false
-        "With a secret" | WebhookEventType.values().shuffled().take(7) | "super secret" | false
+        "Random events" | WebhookEventType.values().toList().shuffled().take(5) | null           | false
+        "With a secret" | WebhookEventType.values().toList().shuffled().take(7) | "super secret" | false
 
 
     }

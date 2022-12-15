@@ -13,6 +13,8 @@ class BitbucketPullRequestActivity implements BitbucketEntity{
     String action
     BitbucketCommit commit
     BitbucketPullRequest pullRequest
+    ArrayList<BitbucketUser>addedReviewers
+    ArrayList<BitbucketUser>removedReviewers
 
 
     @Override
@@ -20,6 +22,9 @@ class BitbucketPullRequestActivity implements BitbucketEntity{
         this.pullRequest = pullRequest as BitbucketPullRequest
 
         this.commit?.setParent(this.pullRequest.repo)
+
+        this.addedReviewers.each {it.setParent(instance)}
+        this.removedReviewers.each {it.setParent(instance)}
     }
 
     @Override

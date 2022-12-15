@@ -39,8 +39,8 @@ class BitbucketUser implements BitbucketEntity{
     }
 
     @Override
-    void setParent(BitbucketEntity repo) {
-        this.instance = repo as BitbucketInstanceManagerRest
+    void setParent(BitbucketEntity instance) {
+        this.instance = instance as BitbucketInstanceManagerRest
     }
 
 
@@ -51,6 +51,10 @@ class BitbucketUser implements BitbucketEntity{
 
     String toAtlassianWikiMarkup() {
         return "[~${name}] (Remote user: [${name}|${getProfileUrl(instance.baseUrl)}])"
+    }
+
+    String toMarkdown() {
+        return "[${name}](${getProfileUrl(baseUrl)})"
     }
 
 

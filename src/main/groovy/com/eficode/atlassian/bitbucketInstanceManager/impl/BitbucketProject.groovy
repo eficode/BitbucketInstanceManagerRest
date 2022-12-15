@@ -145,7 +145,7 @@ public class BitbucketProject implements BitbucketEntity {
         try {
             rawProject = getJsonPages(bbInstance.newUnirest, "/rest/api/1.0/projects/$projectKey" as String, 1, [:], false) as ArrayList<JsonNode>
         } catch (AssertionError ex) {
-            if (ex.message.containsIgnoreCase("Project $projectKey does not exist")) {
+            if (ex.message.toLowerCase().contains("Project $projectKey does not exist".toLowerCase())) {
                 return null
             } else {
                 throw ex
