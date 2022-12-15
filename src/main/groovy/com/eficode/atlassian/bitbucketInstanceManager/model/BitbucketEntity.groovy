@@ -45,6 +45,15 @@ trait BitbucketEntity {
     }
 
 
+
+    static {
+        //Add Groovy 3 functionality, even if Groovy 2
+        String.metaClass.takeRight = {int num->
+            String src = delegate.toString()
+            return src.substring(src.length() - num, src.length())
+        }
+    }
+
     abstract void setParent(BitbucketEntity parent)
 
     /**
