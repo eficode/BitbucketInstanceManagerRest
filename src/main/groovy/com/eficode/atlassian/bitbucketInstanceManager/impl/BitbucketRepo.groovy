@@ -20,6 +20,7 @@ class BitbucketRepo implements BitbucketEntity {
     public String slug
     public String id
     public String name
+    public String description
     public String hierarchyId
     public String scmId
     public String state

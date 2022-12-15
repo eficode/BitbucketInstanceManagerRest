@@ -42,7 +42,6 @@ class BitbucketInstanceManagerRest implements BitbucketEntity{
     String adminUsername
     String adminPassword
     String baseUrl
-    static ObjectMapper objectMapper = new ObjectMapper()
 
     BitbucketInstanceManagerRest(String username, String password, String baseUrl) {
         this.baseUrl = baseUrl

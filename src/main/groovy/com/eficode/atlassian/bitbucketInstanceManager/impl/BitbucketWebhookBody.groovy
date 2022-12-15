@@ -25,7 +25,6 @@ class BitbucketWebhookBody implements BitbucketEntity {
     BitbucketRepo repository
     ArrayList<BitbucketWebhookChange> changes
 
-    static ObjectMapper objectMapper = new ObjectMapper()
 
     @Override
     void setParent(BitbucketEntity repo) {

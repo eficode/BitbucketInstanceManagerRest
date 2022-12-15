@@ -1,6 +1,7 @@
 package com.eficode.atlassian.bitbucketInstanceManager.impl
 
 import com.eficode.atlassian.bitbucketInstanceManager.model.WebhookEventType
+import com.fasterxml.jackson.annotation.JsonAnySetter
 import com.fasterxml.jackson.databind.ObjectMapper
 
 import com.google.gson.reflect.TypeToken
@@ -36,6 +37,8 @@ class BitbucketWebhookInvocation {
         Integer statusCode
     }
 
+    @JsonAnySetter
+    Map<String, Object> dynamicValues = [:]
 
 
     static BitbucketWebhookInvocation fromJson(String jsonString) {

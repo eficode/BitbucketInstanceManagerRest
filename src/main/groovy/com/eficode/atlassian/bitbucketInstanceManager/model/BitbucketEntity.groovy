@@ -3,6 +3,8 @@ package com.eficode.atlassian.bitbucketInstanceManager.model
 import com.eficode.atlassian.bitbucketInstanceManager.BitbucketInstanceManagerRest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketPullRequest
 import com.eficode.atlassian.bitbucketInstanceManager.impl.BitbucketRepo
+import com.fasterxml.jackson.annotation.JsonAnyGetter
+import com.fasterxml.jackson.annotation.JsonAnySetter
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 
@@ -33,6 +35,10 @@ trait BitbucketEntity {
 
 
     static ObjectMapper objectMapper = new ObjectMapper()
+
+
+    @JsonAnySetter
+    Map<String, Object> dynamicValues = [:]
 
     BitbucketInstanceManagerRest getInstance() {
         return this.localInstance
