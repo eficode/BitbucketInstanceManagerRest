@@ -251,7 +251,7 @@ class BitbucketPullRequest implements BitbucketEntity {
     String toAtlassianWikiMarkup() {
 
         String mainOut = "h2. Pull Request: $title (ID: $id)\n\n" +
-                "*Description:* \n\n${description.lines().collect {"\t" + it}.join("\n")}\n\n" +
+                "*Description:* \n\n${description?.lines()?.collect {"\t" + it}?.join("\n") ?: "N/A"}\n\n" +
                 "*State:* $state\n" +
                 "*Created:*" + dateFormat.format(new Date(createdDate as long))  + "\n\n" +
                 "*Updated:*" + dateFormat.format(new Date(updatedDate as long)) + "\n\n" +
@@ -270,7 +270,7 @@ class BitbucketPullRequest implements BitbucketEntity {
     String toMarkdown() {
 
         String mainOut = "## Pull Request: $title (ID: $id)\n\n" +
-                "**Description:** \n\n${description.lines().collect {"\t" + it}.join("\n")}\n\n" +
+                "**Description:** \n\n${description?.lines()?.collect {"\t" + it}?.join("\n") ?: "N/A"}\n\n" +
                 "**State:** $state\n\n" +
                 "**Created:** " + dateFormat.format(new Date(createdDate as long))  + "\n\n" +
                 "**Updated:** " + dateFormat.format(new Date(updatedDate as long)) + "\n\n" +
