@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.gson.reflect.TypeToken
 import unirest.shaded.com.google.gson.annotations.SerializedName
 
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import java.lang.reflect.Type
 
 /**
@@ -24,6 +26,7 @@ class BitbucketWebhookBody implements BitbucketEntity {
     Actor actor
     BitbucketRepo repository
     ArrayList<BitbucketWebhookChange> changes
+    String rawBody
 
 
     @Override
@@ -99,6 +102,27 @@ class BitbucketWebhookBody implements BitbucketEntity {
         return objectMapper.readValue(jsonString, Map)
     }
 
+    /**
+     * Checks if the body has a correct signature <br>
+     * Requires that a "Secret" has been setup for the webhook in bitbucket
+     * @param secret The secret that the webhook is configured to use
+     * @param requestSignature The signature of the webhook requested, stored in the "X-Hub-Signature" header
+     * @return true if a signature is present and valid
+     */
+    boolean hasValidSignature(String secret, String requestSignature) {
+
+
+        Mac mac = Mac.getInstance("HmacSHA256")
+        SecretKeySpec secretKeySpec = new SecretKeySpec(secret.getBytes(), "HmacSHA256")
+        mac.init(secretKeySpec)
+        byte[] digest = mac.doFinal(rawBody.getBytes("UTF-8"))
+
+        String calculatedSignature = digest.encodeHex().toString()
+
+
+        return requestSignature == "sha256=" + calculatedSignature
+    }
+
     static BitbucketWebhookBody fromJson(String jsonString, BitbucketInstanceManagerRest instance) {
 
         assert jsonString[0] == "{": "Expected a Json object starting with \"{\""
@@ -107,6 +131,7 @@ class BitbucketWebhookBody implements BitbucketEntity {
 
 
         BitbucketWebhookBody body = objectMapper.readValue(jsonString, BitbucketWebhookBody.class)
+        body.rawBody = jsonString
 
         //Re-fetch repository to get a proper object
         body.setParent(instance.getProject(body.repository.projectKey).getRepo(body.repository.slug))

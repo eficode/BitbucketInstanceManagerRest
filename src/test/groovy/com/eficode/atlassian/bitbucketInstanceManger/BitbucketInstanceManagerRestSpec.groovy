@@ -671,7 +671,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         }
         repo = project.createRepo(repoName)
 
-        BitbucketWebhook webhook = repo.createWebhook("Postman Echo", remoteUrl,[])
+        BitbucketWebhook webhook = repo.createWebhook("Postman Echo", remoteUrl,[], "a-secret-" + System.currentTimeMillis().toString().takeRight(5))
 
 
         when: "When performing a change in repo"
@@ -696,6 +696,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         then: "A successful webhook invocation should have been performed"
         invocation.result.description == "200"
         invocation.event == WebhookEventType.REPO_REFS_CHANGED
+        invocation.hasValidSignature(webhook.secret)
 
 
 
@@ -711,6 +712,7 @@ class BitbucketInstanceManagerRestSpec extends Specification {
         webhookBody.repository.project.getRepo(repoName).getWebhooks().id.contains(webhook.id)
         webhookBody.changes.size() == 1
         webhookBody.repository.slug == repo.slug
+        webhookBody.hasValidSignature(webhook.secret, invocation.request.headers.get("X-Hub-Signature").toString())
 
 
     }
