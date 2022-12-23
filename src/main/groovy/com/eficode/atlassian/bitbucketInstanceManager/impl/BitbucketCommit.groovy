@@ -179,6 +179,16 @@ class BitbucketCommit implements BitbucketEntity {
 
     }
 
+    /**
+     * Returns a string array of full file paths that where changed in this commit
+     * @param maxChanges Max file changes in the commit to check, default 150
+     * @return ex: [src/stuff/README.md, pom.xml]
+     */
+    ArrayList<String>getChangedFiles(long maxChanges = 150) {
+
+        return  getChanges(maxChanges).collect {it.path.toString}
+    }
+
     ArrayList<BitbucketChange> getChanges(long maxChanges = 150) {
         return getChanges(repository.project.key, repository.slug, id, maxChanges)
     }
