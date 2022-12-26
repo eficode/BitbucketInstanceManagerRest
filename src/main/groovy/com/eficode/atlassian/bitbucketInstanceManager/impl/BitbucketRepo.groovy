@@ -51,6 +51,15 @@ class BitbucketRepo implements BitbucketEntity {
     }
 
 
+    String getHttpCloneLink() {
+        ArrayList<Map<String,String>> cloneLinks =  links?.clone as ArrayList<Map>
+
+        String link =  cloneLinks.find {it.name == "http"}?.get("href")
+
+        return link
+    }
+
+
     boolean equals(Object object) {
 
         return object instanceof BitbucketRepo && this.name == object.name && this.id == object.id
